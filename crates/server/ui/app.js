@@ -43,6 +43,7 @@ const S = {
   syncing:false, loadSeq:0,
 };
 const $ = s => document.querySelector(s);
+const touch = () => matchMedia("(pointer: coarse)").matches;
 const main = $("#main");
 
 /* ===== api ===== */
@@ -88,6 +89,19 @@ const grad = it => `linear-gradient(160deg,hsl(${hue(it.category)} 45% 38%),hsl(
 function poster(it) {
   const img = it.poster_url ? `<img src="${esc(it.poster_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
   return `<div class="poster" style="--g:${grad(it)}"><span>${esc(code(it))}</span>${img}</div>`;
+}
+
+// Only New and Everything are filtered by date ("From"); the sorted lists hold everything.
+const dated = () => S.view === "new" || S.view === "all";
+function rangeText() {
+  if (S.range === "last") return S.lastVisit ? "since your last visit" : "in the last day";
+  if (S.range === "custom") return S.from ? `since ${new Date(S.from + "T12:00:00+07:00").toLocaleDateString("en-GB", {day:"numeric", month:"short"})}` : "today";
+  return {"0":"today", "2":"in the last 3 days", "6":"in the last 7 days"}[S.range] ?? "in this date range";
+}
+function syncRange() {
+  const on = dated();
+  $("#range").disabled = !on; $("#from").disabled = !on;
+  $("#rangeField").title = on ? "" : "From only filters New and Everything";
 }
 
 /* ===== loading ===== */
@@ -166,12 +180,14 @@ function render() {
     const label = VIEWS.find(v => v[0] === S.view)[1];
     let msg;
     if (catsOn() && !S.cats.size) msg = `<h3>No categories selected</h3><p>Tick at least one category on the left to see torrents.</p><button data-act="allcats">Select all categories</button>`;
+    else if (S.q || S.free) msg = `<h3>No matches</h3><p>Nothing in ${label}${S.q ? ` matches “${esc(S.q)}”` : ""}${S.free ? `${S.q ? " and is" : " is"} free` : ""}${dated() ? ` ${rangeText()}` : ""}.</p><button data-act="clearfilters">Clear ${S.q && S.free ? "search and Free only" : S.q ? "search" : "Free only"}</button>`;
     else if (!total) msg = `<h3>No torrents yet</h3><p>Sync to fetch the latest uploads from tracker.</p><button data-act="sync">Sync now</button>`;
-    else if (S.view === "new") msg = `<h3>All caught up</h3><p>Nothing new ${S.range === "last" ? "since your last visit" : "in this date range"}${S.q || S.free ? " that matches your filters" : ""}. Sync to check tracker for new uploads.</p><button data-act="sync">Sync now</button>`;
+    else if (S.view === "new") msg = `<h3>All caught up</h3><p>Nothing new ${rangeText()}. Sync to check the tracker for new uploads.</p><button data-act="sync">Sync now</button>`;
     else msg = `<h3>Nothing in ${label}</h3><p>${MARKS[S.view] ? `Press ${MARKS[S.view].key} on a torrent to add it here.` : "Try a wider date range."}</p>`;
     main.innerHTML = `<div class="empty">${msg}</div>`;
   } else {
-    const head = S.grid ? "" : `<div class="colhead"><span></span><span></span><span></span><span class="l">${plural(flat.length, "torrent")}${flat.length >= 5000 ? " (first 5000)" : ""}</span><span>Size</span><span class="c-seed">Seeds</span><span class="c-leech">Leech</span><span class="c-snatch">Snatched</span><span class="c-time">${byDay ? "Time" : "Age"}</span></div>`;
+    const total = S.summary?.counts.total ?? 0;
+    const head = S.grid ? "" : `<div class="colhead"><span></span><span></span><span></span><span class="l">${S.view === "all" && total > flat.length && flat.length < 5000 ? `${flat.length} uploaded ${rangeText()}, of ${total} in bbt` : plural(flat.length, "torrent") + (flat.length >= 5000 ? " (first 5000)" : "")}</span><span>Size</span><span class="c-seed">Seeds</span><span class="c-leech">Leech</span><span class="c-snatch">Snatched</span><span class="c-time">${byDay ? "Time" : "Age"}</span></div>`;
     main.classList.toggle("has-colhead", !S.grid);
     main.innerHTML = head + gs.map(g => {
       const nNew = g.items.filter(i => !i.mark).length;
@@ -189,7 +205,7 @@ function render() {
     main.insertAdjacentHTML("beforeend", `<p class="coverage">bbt has every upload back to ${fmtWhen(oldest)}. Earlier ones aren't loaded yet, so this list can't go further back. Open Everything and scroll to the end to load older pages.</p>`);
   }
   if (keepBanner) main.prepend(keepBanner);
-  renderNav(); renderBins(); renderTarget(); renderSyncText();
+  renderNav(); renderBins(); renderTarget(); renderSyncText(); syncRange();
   if (S.drawer) renderDrawer();
 }
 function renderNav() {
@@ -243,7 +259,7 @@ function renderDrawer() {
   <dl><dt>Uploaded</dt><dd>${fmtWhen(it.uploaded_at)}</dd><dt>By</dt><dd>${esc(it.uploader ?? "Anonymous")}</dd><dt>Size</dt><dd>${fmtSize(it.size_bytes)}, ${it.files} file${it.files === 1 ? "" : "s"}</dd></dl></div></div>
   <dl><dt>Seeding</dt><dd>${it.seeders}</dd><dt>Leeching</dt><dd>${it.leechers}</dd><dt>Snatched</dt><dd>${it.snatched}</dd><dt>Free download</dt><dd>${it.free ? esc(it.free) : "No"}</dd><dt>Counts updated</dt><dd>${fmtAgo(it.stats_at)}</dd></dl>
   ${shots}
-  <div class="rate-row"><div class="rate" role="group" aria-label="Your rating">${[5, 4, 3, 2, 1].map(n => `<button data-rate="${n}" class="${it.rating >= n ? "on" : ""}" aria-pressed="${it.rating === n}" aria-label="${n} star${n === 1 ? "" : "s"}">★</button>`).join("")}</div><span class="note">${it.rating ? `${it.rating} of 5. Click it again to clear.` : "Not rated. Press r then 1–5."}</span></div>
+  <div class="rate-row"><div class="rate" role="group" aria-label="Your rating">${[5, 4, 3, 2, 1].map(n => `<button data-rate="${n}" class="${it.rating >= n ? "on" : ""}" aria-pressed="${it.rating === n}" aria-label="${n} star${n === 1 ? "" : "s"}">★</button>`).join("")}</div><span class="note">${it.rating ? `${it.rating} of 5. ${touch() ? "Tap" : "Click"} it again to clear.` : touch() ? "Not rated." : "Not rated. Press r then 1–5."}</span></div>
   <div class="states">${Object.entries(MARKS).map(([k, m]) => `<button data-set="${k}" style="--c:${m.c}" aria-pressed="${it.mark === k}">${m.label}</button>`).join("")}</div>
   <div class="acts"><button class="primary" data-act="download" ${S.downloading ? "disabled" : ""}>${S.downloading ? "Downloading…" : "Download .torrent"}</button>${siteUrl(it) ? `<a href="${siteUrl(it)}" target="_blank" rel="noreferrer">Open on the tracker</a>` : ""}</div>
   <p class="note">Download fetches a fresh link from tracker and marks the torrent Downloaded.</p>`;
@@ -536,6 +552,7 @@ async function maybeSyncOnOpen() {
 /* ===== events ===== */
 main.addEventListener("click", e => {
   if (e.target.closest("[data-act=sync]")) return doSync();
+  if (e.target.closest("[data-act=clearfilters]")) { S.q = ""; $("#q").value = ""; S.free = false; $("#freeOnly").checked = false; return load(); }
   if (e.target.closest("[data-act=allcats]")) { S.cats = new Set(Object.keys(CATS).map(Number)); saveCats(); return load(); }
   if (e.target.closest("[data-act=older]")) { O.error = false; return loadOlder(); }
   const bulk = e.target.closest("[data-bulk]"); if (bulk) return bulkViewed(bulk.dataset.bulk);
