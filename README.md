@@ -28,4 +28,8 @@ Sync never crawls the archive. Each run:
 
 Details pages are fetched only when you open a torrent or download it.
 
+To go further back, open **Everything**, pick a **From** date and scroll to the end:
+each load reads exactly one older tracker page, up to 40 pages a day, and stops at
+the From date.
+
 `cargo run -p bbt-server -- sync [--max-pages N]` runs one sync from the terminal.
