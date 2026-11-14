@@ -4,9 +4,9 @@ use bbt_server::sync::{self, HARD_MAX_PAGES, Outcome, Tracker};
 use bbt_server::tracker::{self, Client, Credentials};
 use std::time::Duration;
 
-const USAGE: &str = "usage: bbt-server sync [--max-pages N]   (N is 1 to 5, default 5)";
+const USAGE: &str = "usage: bbt-server sync [--max-pages N]   (N is 1 to 12, default 12)";
 /// Minimum gap between any two requests to tracker.
-const REQUEST_GAP: Duration = Duration::from_secs(2);
+const REQUEST_GAP: Duration = Duration::from_secs(3);
 
 #[tokio::main]
 async fn main() -> Result<()> {

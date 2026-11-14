@@ -8,7 +8,7 @@ use anyhow::Result;
 use bbt_domain::{ListPage, parse_list_page};
 
 /// Absolute ceiling on pages per sync, whatever the caller asks for.
-pub const HARD_MAX_PAGES: u32 = 5;
+pub const HARD_MAX_PAGES: u32 = 12;
 /// First sync looks back this far.
 pub const FIRST_SYNC_LOOKBACK_SECS: i64 = 24 * 3600;
 /// Later syncs re-read this much before the previous sync started.
@@ -261,12 +261,12 @@ mod tests {
         let mut store = Store::open_in_memory().unwrap();
         let mut fake = Fake { fetched: vec![] };
         let out = run(&mut store, &mut fake, 999, NOW).await.unwrap();
-        assert_eq!(fake.fetched, vec![0, 1, 2, 3, 4]);
+        assert_eq!(fake.fetched, (0..12).collect::<Vec<_>>());
         let Outcome::Done(report) = out else {
             panic!("expected a sync")
         };
         assert_eq!(report.stop, Stop::PageCap);
-        assert_eq!(report.new_count, 251);
+        assert_eq!(report.new_count, 601);
     }
 
     #[tokio::test]
