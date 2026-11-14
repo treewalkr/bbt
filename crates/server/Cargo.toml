@@ -1,0 +1,16 @@
+[package]
+name = "bbt-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+bbt-domain = { version = "0.1.0", path = "../domain" }
+chrono = "0.4.45"
+dotenvy = "0.15.7"
+encoding_rs = "0.8.44"
+rand = "0.10.3"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "form", "http2"] }
+rusqlite = { version = "0.42.0", features = ["bundled"] }
+sha2 = "0.11.1"
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread"] }
