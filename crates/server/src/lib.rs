@@ -2,6 +2,7 @@
 
 pub mod api;
 pub mod config;
+pub mod older;
 pub mod queries;
 pub mod store;
 pub mod sync;
