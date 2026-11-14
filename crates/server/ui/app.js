@@ -259,7 +259,7 @@ function renderDrawer() {
   if (!it) return closeDrawer();
   const d = detailsCache.get(it.id);
   const shots = !d ? shotsNote(it.id)
-    : d.error ? `<p class="err">Couldn't load screenshots: ${esc(d.error)}</p>`
+    : d.error ? `<p class="err" title="${esc(d.error)}">Couldn't get screenshots from the tracker${/disabled/.test(d.error) ? " because tracker access is off (check .env)" : /not in the database/.test(d.error) ? " because this torrent is no longer in bbt" : ""}. <button class="linkbtn" data-act="retry">Try again</button></p>`
     : d.images.length ? `<div class="shots">${d.images.map((u, i) => `<a href="${esc(u)}" data-shot="${i}" aria-label="View screenshot ${i + 1} of ${d.images.length}"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`).join("")}</div>`
     : `<p class="note">No screenshots on tracker for this torrent.</p>`;
   $("#drawerIn").innerHTML = `<header><span>${catsOn() ? esc(CATS[it.category] ?? `Category ${it.category}`) + " " : ""}<span style="color:var(--faint)">#${it.id}</span></span><button class="close" aria-label="Close details" data-act="close">×</button></header>
@@ -601,6 +601,7 @@ $("#drawerIn").addEventListener("click", e => {
   if (shot) { e.preventDefault(); return openViewer(detailsCache.get(S.drawer)?.images ?? [], +shot.dataset.shot); }
   const b = e.target.closest("[data-set]"); if (b) return setMark([S.drawer], b.dataset.set);
   if (e.target.closest("[data-act=close]")) return closeDrawer();
+  if (e.target.closest("[data-act=retry]")) { detailsCache.delete(S.drawer); return openDrawer(S.drawer); }
   if (e.target.closest("[data-act=download]")) return download(S.drawer);
 });
 function showView(v) { S.view = v; S.focus = null; S.picked = false; S.sel.clear(); main.scrollTop = 0; setRail(false); load(); }

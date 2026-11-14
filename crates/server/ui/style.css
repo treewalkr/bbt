@@ -247,6 +247,7 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
 .sync .prog.busy i{width:35%;animation:slide 1.2s ease-in-out infinite}
 @keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(290%)}}
 .drawer .err{color:#F3A3B6;font-size:12px}
+.linkbtn{border:0;background:none;padding:0;font:inherit;color:var(--text);text-decoration:underline;text-underline-offset:2px}
 .muted{color:var(--muted)}
 .coverage{margin:0;padding:18px 20px 28px;font-size:13px;color:var(--muted);max-width:70ch}
 .older{display:flex;align-items:center;gap:14px;padding:18px 20px 28px;font-size:13px;color:var(--muted)}
