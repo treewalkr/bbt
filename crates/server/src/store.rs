@@ -53,7 +53,7 @@ CREATE TABLE kv (
 ";
 
 pub struct Store {
-    conn: Connection,
+    pub(crate) conn: Connection,
 }
 
 /// Summary of a finished sync run.
