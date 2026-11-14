@@ -44,6 +44,7 @@
   <div class="seg" role="group" aria-label="Layout"><button id="vList" aria-pressed="true">List</button><button id="vGrid" aria-pressed="false">Posters</button></div>
   <label class="toggle"><input type="checkbox" id="freeOnly"> Free only</label>
   <label class="toggle"><input type="checkbox" id="blurT" checked> Blur posters</label>
+  <label class="toggle"><input type="checkbox" id="hideT"> Blur titles</label>
   <button class="iconbtn" id="helpBtn" title="Keyboard shortcuts (?)">?</button>
 </header>
 
@@ -83,6 +84,7 @@
     <kbd>o</kbd><span>Open on tracker.example</span>
     <kbd>u</kbd><span>Undo last change</span>
     <kbd>b</kbd><span>Blur posters on or off</span>
+    <kbd>t</kbd><span>Blur titles on or off</span>
     <kbd>/</kbd><span>Search</span>
     <kbd>← →</kbd><span>Previous or next screenshot (in the viewer)</span>
     <kbd>f</kbd><span>Full size or fit to screen (in the viewer)</span>
@@ -103,6 +105,7 @@
   <div class="set">
     <label for="sSticky">Show sticky torrents</label><input id="sSticky" type="checkbox">
     <label for="sBlur">Blur posters when bbt opens</label><input id="sBlur" type="checkbox">
+    <label for="sHide">Blur titles when bbt opens</label><input id="sHide" type="checkbox">
   </div>
   <form method="dialog" class="foot"><button>Done</button></form>
 </dialog>

@@ -496,6 +496,8 @@ let qT; $("#q").oninput = e => { clearTimeout(qT); qT = setTimeout(() => { S.q =
 $("#freeOnly").onchange = e => { S.free = e.target.checked; load(); };
 const setBlur = on => { document.body.classList.toggle("blur", on); $("#blurT").checked = on; };
 $("#blurT").onchange = e => setBlur(e.target.checked);
+const setHideTitles = on => { document.body.classList.toggle("hide-titles", on); $("#hideT").checked = on; };
+$("#hideT").onchange = e => setHideTitles(e.target.checked);
 $("#vList").onclick = () => { S.grid = false; $("#vList").ariaPressed = "true"; $("#vGrid").ariaPressed = "false"; render(); };
 $("#vGrid").onclick = () => { S.grid = true; $("#vGrid").ariaPressed = "true"; $("#vList").ariaPressed = "false"; render(); };
 $("#syncBtn").onclick = doSync;
@@ -505,6 +507,7 @@ $("#undoBtn").onclick = undo;
 $("#sOpen").onchange = e => localStorage.setItem("bbt_sync_on_open", e.target.checked ? "1" : "0");
 $("#sSticky").onchange = e => { S.sticky = e.target.checked; localStorage.setItem("bbt_sticky", S.sticky ? "1" : "0"); load(); };
 $("#sBlur").onchange = e => localStorage.setItem("bbt_blur", e.target.checked ? "1" : "0");
+$("#sHide").onchange = e => localStorage.setItem("bbt_hide_titles", e.target.checked ? "1" : "0");
 document.addEventListener("keydown", e => {
   if (viewerOpen()) {
     if (e.key === "ArrowRight" || e.key === "l") { e.preventDefault(); stepViewer(1); }
@@ -538,6 +541,7 @@ document.addEventListener("keydown", e => {
   else if (k === "o" && S.focus) { const it = S.items.find(i => i.id === S.focus); if (it) window.open(`${SITE}details.php?id=${it.id}&hash_id=${it.hash_id}`, "_blank", "noreferrer"); }
   else if (k === "u") undo();
   else if (k === "b") setBlur(!document.body.classList.contains("blur"));
+  else if (k === "t") setHideTitles(!document.body.classList.contains("hide-titles"));
   else if (k === "/") { e.preventDefault(); $("#q").focus(); }
   else if (k === "?") $("#help").showModal();
 });
@@ -548,6 +552,8 @@ document.addEventListener("keydown", e => {
   $("#sOpen").checked = localStorage.getItem("bbt_sync_on_open") !== "0";
   $("#sSticky").checked = S.sticky;
   $("#sBlur").checked = localStorage.getItem("bbt_blur") !== "0";
+  setHideTitles(localStorage.getItem("bbt_hide_titles") === "1");
+  $("#sHide").checked = localStorage.getItem("bbt_hide_titles") === "1";
   $("#from").value = dayKey(nowSec() - 2 * DAY);
   $("#from").max = dayKey(nowSec());
   // "Since last visit" = the visit before this browser session, so reloads don't reset it.
