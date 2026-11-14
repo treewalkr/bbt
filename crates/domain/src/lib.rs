@@ -57,6 +57,38 @@ pub fn parse_list_page(html: &str) -> ListPage {
     page
 }
 
+/// What the app needs from a torrent's details page.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Details {
+    /// Relative signed `download.php?…` link. Its token expires, so fetch it fresh.
+    pub download_path: Option<String>,
+    /// Absolute image URLs from the description (cover and screenshots), deduplicated.
+    pub images: Vec<String>,
+}
+
+/// Parse `details.php`.
+pub fn parse_details_page(html: &str) -> Details {
+    let doc = Html::parse_document(html);
+    let download_path = doc
+        .select(&sel("a[href^='download.php?']"))
+        .next()
+        .and_then(|a| a.value().attr("href"))
+        .map(str::to_string);
+    let mut images: Vec<String> = Vec::new();
+    for img in doc.select(&sel(".post-descr img")) {
+        if let Some(src) = img.value().attr("src").map(str::trim)
+            && (src.starts_with("https://") || src.starts_with("http://"))
+            && !images.iter().any(|i| i == src)
+        {
+            images.push(src.to_string());
+        }
+    }
+    Details {
+        download_path,
+        images,
+    }
+}
+
 fn sel(s: &str) -> Selector {
     Selector::parse(s).expect("static selector")
 }
