@@ -61,11 +61,23 @@ async fn serve_cmd(args: &[String]) -> Result<()> {
     };
     let cfg = Config::from_env()?;
     let state = AppState::new(&cfg.db_path.clone(), Some(cfg))?;
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-    let listener = tokio::net::TcpListener::bind(addr)
+    // Loopback addresses only, never a name: `localhost` resolves to both of these.
+    let v4 = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let v6 = std::net::SocketAddr::from((std::net::Ipv6Addr::LOCALHOST, port));
+    let listener = tokio::net::TcpListener::bind(v4)
         .await
-        .with_context(|| format!("binding {addr}"))?;
-    println!("bbt running at http://{addr}");
-    axum::serve(listener, api::router(state)).await?;
+        .with_context(|| format!("binding {v4}"))?;
+    let app = api::router(state);
+    println!("bbt running at http://localhost:{port}");
+    match tokio::net::TcpListener::bind(v6).await {
+        Ok(listener6) => {
+            tokio::try_join!(
+                axum::serve(listener, app.clone()).into_future(),
+                axum::serve(listener6, app).into_future(),
+            )?;
+        }
+        // IPv6 loopback can be missing; IPv4 alone still serves localhost.
+        Err(_) => axum::serve(listener, app).await?,
+    }
     Ok(())
 }

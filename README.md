@@ -8,9 +8,9 @@ Downloaded) instead of browsing the same pages every day.
 
 1. Copy `.env.example` to `.env` and fill in your username and password.
 2. `cargo run --release -p bbt-server -- serve`
-3. Open http://127.0.0.1:4781
+3. Open http://localhost:4781
 
-The server only listens on localhost.
+The server only listens on the loopback addresses (127.0.0.1 and ::1).
 
 ## Keys
 
