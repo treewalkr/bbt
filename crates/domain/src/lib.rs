@@ -89,6 +89,38 @@ pub fn parse_details_page(html: &str) -> Details {
     }
 }
 
+/// The countdown page shown before a download, and where its button leads.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DownloadGate {
+    /// Relative link the button opens once the countdown ends.
+    pub path: String,
+    /// Seconds the page counts down before the button works.
+    pub wait_secs: u64,
+}
+
+/// Parse the countdown page that `downloadnew.php` serves instead of the file.
+pub fn parse_download_gate(html: &str) -> Option<DownloadGate> {
+    let doc = Html::parse_document(html);
+    let path = doc
+        .select(&sel("a#bbDlBtn[href]"))
+        .next()?
+        .value()
+        .attr("href")?
+        .trim_start_matches('/')
+        .to_string();
+    let wait_secs = html
+        .split_once("var s=")
+        .map(|(_, rest)| {
+            rest.chars()
+                .take_while(char::is_ascii_digit)
+                .collect::<String>()
+        })
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(5)
+        .min(30);
+    Some(DownloadGate { path, wait_secs })
+}
+
 fn sel(s: &str) -> Selector {
     Selector::parse(s).expect("static selector")
 }
