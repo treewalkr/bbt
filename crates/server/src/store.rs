@@ -52,6 +52,16 @@ CREATE TABLE kv (
 );
 ";
 
+/// Cached parts of each torrent's details page (images never change; the
+/// download link expires, so it is not stored).
+const SCHEMA_V2: &str = "
+CREATE TABLE details (
+    torrent_id INTEGER PRIMARY KEY REFERENCES torrents(id),
+    images     TEXT    NOT NULL,
+    fetched_at INTEGER NOT NULL
+);
+";
+
 pub struct Store {
     pub(crate) conn: Connection,
 }
@@ -79,9 +89,13 @@ impl Store {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
-        if version == 0 {
+        if version < 1 {
             conn.execute_batch(SCHEMA)?;
             conn.pragma_update(None, "user_version", 1)?;
+        }
+        if version < 2 {
+            conn.execute_batch(SCHEMA_V2)?;
+            conn.pragma_update(None, "user_version", 2)?;
         }
         Ok(Self { conn })
     }
@@ -145,6 +159,40 @@ impl Store {
         }
         tx.commit()?;
         Ok(new)
+    }
+
+    /// `(hash_id, title)` of a stored torrent.
+    pub fn torrent_ref(&self, id: u64) -> Result<Option<(u64, String)>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT hash_id, title FROM torrents WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?)
+    }
+
+    pub fn cached_images(&self, id: u64) -> Result<Option<Vec<String>>> {
+        let json: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT images FROM details WHERE torrent_id = ?1",
+                [id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(json.map(|j| serde_json::from_str(&j)).transpose()?)
+    }
+
+    pub fn save_images(&self, id: u64, images: &[String], now: i64) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO details (torrent_id, images, fetched_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(torrent_id) DO UPDATE SET images = excluded.images,
+                 fetched_at = excluded.fetched_at",
+            params![id, serde_json::to_string(images)?, now],
+        )?;
+        Ok(())
     }
 
     pub fn torrent_count(&self) -> Result<u64> {
@@ -304,6 +352,20 @@ mod tests {
         let run = s.last_sync().unwrap().unwrap();
         assert_eq!((run.pages, run.new_count), (2, 40));
         assert_eq!(run.stop_reason.as_deref(), Some("reached cutoff"));
+    }
+
+    #[test]
+    fn caches_images() {
+        let mut s = Store::open_in_memory().unwrap();
+        s.upsert_torrents(&[torrent(1, 5)], 100).unwrap();
+        assert_eq!(s.torrent_ref(1).unwrap(), Some((2, "Sample 1".into())));
+        assert_eq!(s.torrent_ref(9).unwrap(), None);
+        assert_eq!(s.cached_images(1).unwrap(), None);
+        s.save_images(1, &["https://a/1.jpg".into()], 200).unwrap();
+        assert_eq!(
+            s.cached_images(1).unwrap(),
+            Some(vec!["https://a/1.jpg".into()])
+        );
     }
 
     #[test]

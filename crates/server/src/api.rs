@@ -4,12 +4,13 @@ use crate::config::{self, Config};
 use crate::queries::{Filter, Mark, Sort, View};
 use crate::store::Store;
 use crate::sync::{self, HARD_MAX_PAGES, Outcome};
-use crate::tracker::Client;
-use axum::extract::{Query, State};
-use axum::http::StatusCode;
+use crate::tracker::{self, Client};
+use axum::extract::{Path, Query, State};
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use bbt_domain::{Details, parse_details_page};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -46,6 +47,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/marks", post(set_marks))
         .route("/api/visit", post(visit))
         .route("/api/sync", get(sync_status).post(run_sync))
+        .route("/api/torrents/{id}/details", get(details))
+        .route("/api/torrents/{id}/download", get(download))
         .with_state(state)
 }
 
@@ -60,6 +63,12 @@ impl ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         (self.0, Json(json!({ "error": self.1 }))).into_response()
+    }
+}
+
+impl From<tracker::Error> for ApiError {
+    fn from(e: tracker::Error) -> Self {
+        Self(StatusCode::BAD_GATEWAY, format!("tracker: {e}"))
     }
 }
 
@@ -241,6 +250,109 @@ async fn run_sync(State(s): State<Arc<AppState>>) -> ApiResult<Value> {
     }))
 }
 
+/// Fetch a torrent's details page through the shared client (respects the request gap).
+async fn fetch_details(s: &AppState, id: u64) -> Result<Details, ApiError> {
+    let Some(cfg) = s.config.as_ref() else {
+        return Err(ApiError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "tracker access is disabled".into(),
+        ));
+    };
+    let hash_id = {
+        let store = s.store.lock().await;
+        store
+            .torrent_ref(id)?
+            .ok_or_else(|| {
+                ApiError(
+                    StatusCode::NOT_FOUND,
+                    format!("torrent {id} is not in the database"),
+                )
+            })?
+            .0
+    };
+    let mut client = s.client.lock().await;
+    if client.is_none() {
+        *client = Some(config::client(&*s.store.lock().await, cfg)?);
+    }
+    let client = client.as_mut().expect("client was just set");
+    let result = client
+        .fetch_html(
+            &format!("details.php?id={id}&hash_id={hash_id}"),
+            &cfg.creds,
+        )
+        .await;
+    let store = s.store.lock().await;
+    store.set("cookies", &client.cookie_header())?;
+    let details = parse_details_page(&result?);
+    store.save_images(id, &details.images, chrono::Utc::now().timestamp())?;
+    Ok(details)
+}
+
+/// Images from the details page, fetched once and then served from the cache.
+async fn details(State(s): State<Arc<AppState>>, Path(id): Path<u64>) -> ApiResult<Value> {
+    if let Some(images) = s.store.lock().await.cached_images(id)? {
+        return Ok(Json(json!({ "images": images, "cached": true })));
+    }
+    let d = fetch_details(&s, id).await?;
+    Ok(Json(json!({ "images": d.images, "cached": false })))
+}
+
+/// Fetch a fresh signed link from the details page, then pass the .torrent through.
+async fn download(
+    State(s): State<Arc<AppState>>,
+    Path(id): Path<u64>,
+) -> Result<Response, ApiError> {
+    let d = fetch_details(&s, id).await?;
+    let path = d.download_path.ok_or_else(|| {
+        ApiError(
+            StatusCode::BAD_GATEWAY,
+            "no download link on the details page".into(),
+        )
+    })?;
+    let title = s
+        .store
+        .lock()
+        .await
+        .torrent_ref(id)?
+        .map(|(_, t)| t)
+        .unwrap_or_default();
+    let file = s
+        .client
+        .lock()
+        .await
+        .as_mut()
+        .expect("client created by fetch_details")
+        .fetch_file(&path)
+        .await?;
+    let disposition = format!(
+        "attachment; filename=\"tracker-{id}.torrent\"; filename*=UTF-8''{}.torrent",
+        percent_encode(&title)
+    );
+    let mut resp = file.bytes.into_response();
+    let h = resp.headers_mut();
+    h.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/x-bittorrent"),
+    );
+    h.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&disposition).map_err(|e| anyhow::anyhow!(e))?,
+    );
+    Ok(resp)
+}
+
+/// RFC 5987 encoding for `filename*`.
+fn percent_encode(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -385,6 +497,28 @@ mod tests {
         assert_eq!(v["previous"], Value::Null);
         let (_, v) = call(&app, "POST", "/api/visit", None).await;
         assert!(v["previous"].as_i64().unwrap() > 1_700_000_000);
+    }
+
+    #[tokio::test]
+    async fn serves_cached_details_without_touching_tracker() {
+        let (app, dir) = app().await;
+        let store = Store::open(dir.path().join("t.db")).unwrap();
+        store
+            .save_images(1, &["https://a/1.jpg".into()], 5)
+            .unwrap();
+        let (st, v) = call(&app, "GET", "/api/torrents/1/details", None).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v, json!({"images": ["https://a/1.jpg"], "cached": true}));
+
+        let (st, _) = call(&app, "GET", "/api/torrents/2/details", None).await;
+        assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
+        let (st, _) = call(&app, "GET", "/api/torrents/2/download", None).await;
+        assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn encodes_filenames() {
+        assert_eq!(percent_encode("A b/ไ"), "A%20b%2F%E0%B9%84");
     }
 
     #[tokio::test]

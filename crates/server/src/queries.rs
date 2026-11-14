@@ -105,6 +105,7 @@ pub struct Filter {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TorrentRow {
     pub id: u64,
+    pub hash_id: u64,
     pub category: u16,
     pub title: String,
     pub poster_url: Option<String>,
@@ -143,7 +144,7 @@ impl Store {
         let mut sql = String::from(
             "SELECT t.id, t.category, t.title, t.poster_url, t.preview_url, t.uploaded_at,
                     t.size_bytes, t.files, t.snatched, t.seeders, t.leechers, t.free,
-                    t.multiplier, t.uploader, t.sticky, t.stats_at, m.state
+                    t.multiplier, t.uploader, t.sticky, t.stats_at, m.state, t.hash_id
              FROM torrents t LEFT JOIN marks m ON m.torrent_id = t.id WHERE 1=1",
         );
         let mut args: Vec<Box<dyn ToSql>> = Vec::new();
@@ -279,6 +280,7 @@ fn row_to_torrent(r: &Row) -> rusqlite::Result<TorrentRow> {
     let state: Option<String> = r.get(16)?;
     Ok(TorrentRow {
         id: r.get(0)?,
+        hash_id: r.get(17)?,
         category: r.get(1)?,
         title: r.get(2)?,
         poster_url: r.get(3)?,
