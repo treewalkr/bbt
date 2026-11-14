@@ -30,7 +30,7 @@ function saveCats() {
   api("PUT", "/api/prefs", {categories}).catch(e => toast(`Couldn't save categories: ${e.message}`, false));
 }
 const S = {
-  view:"new", cats:loadCats(), range:"last", from:"", sort:"new", q:"",
+  view:"new", cats:loadCats(), range:"0", from:"", sort:"new", q:"",
   grid:false, free:false, sticky:localStorage.getItem("bbt_sticky")==="1",
   items:[], summary:null, lastVisit:null, focus:null, sel:new Set(), undo:null, drawer:null,
   syncing:false, loadSeq:0,
