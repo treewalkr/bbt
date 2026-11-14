@@ -19,7 +19,7 @@ const MARKS = {
 /* ===== key bindings ===== */
 // Single-character keys only. Enter, Esc, the arrows and Option stay fixed.
 const KEY_DEFAULTS = {
-  next:"j", prev:"k", site:"o", search:"/",
+  next:"j", prev:"k", open:"l", site:"o", search:"/",
   viewed:"1", view_later:"2", download_later:"3", downloaded:"4", unmark:"0", bulk:"!", undo:"u",
   rate:"r", select:"x", blur:"b", titles:"t", help:"?",
   lbPrev:"h", lbNext:"l", lbReveal:"v", lbFull:"f",
@@ -720,7 +720,7 @@ document.addEventListener("keydown", e => {
   else if (Object.keys(MARKS).some(m => hit(m, e))) setMark(targets(), Object.keys(MARKS).find(m => hit(m, e)), {advance:true});
   else if (hit("unmark", e)) setMark(targets(), null);
   else if (hit("select", e) && S.focus) { const id = S.focus; S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); const c = main.querySelector(`[data-id="${id}"] .sel`); if (c) c.checked = S.sel.has(id); renderTarget(); }
-  else if (k === "Enter" && S.focus) openDrawer(S.focus, {focus: true});
+  else if ((k === "Enter" || hit("open", e)) && S.focus) openDrawer(S.focus, {focus: true});
   else if (k === "Escape") { disarmBulk(); setRail(false); closeDrawer(); if (S.sel.size) { S.sel.clear(); render(); } }
   else if (hit("site", e) && S.focus) { const it = S.items.find(i => i.id === S.focus); if (it && siteUrl(it)) window.open(siteUrl(it), "_blank", "noreferrer"); }
   else if (hit("undo", e)) undo();
@@ -733,7 +733,7 @@ document.addEventListener("keydown", e => {
 /* ===== key editor (in the Keyboard dialog) ===== */
 let capturing = null; // the button waiting for a key
 const ACTION_NAMES = {
-  next:"Next torrent", prev:"Previous torrent", site:"Open on the tracker", search:"Search",
+  next:"Next torrent", prev:"Previous torrent", open:"Open details", site:"Open on the tracker", search:"Search",
   viewed:"Viewed", view_later:"View later", download_later:"Download later", downloaded:"Downloaded",
   unmark:"Back to New", bulk:"Mark the day viewed", undo:"Undo", rate:"Rate", select:"Select",
   blur:"Blur posters", titles:"Blur titles", help:"Keyboard help",
