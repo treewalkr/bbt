@@ -374,3 +374,13 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
 .sw-done{position:absolute;inset:0;display:grid;place-content:center;padding:20px}
 body:has(#swipe:not([hidden])) .toast{bottom:12px}
 @media (max-width:760px){.swipe{padding:10px 10px 12px;gap:10px}.sw-stamp{font-size:26px}.sw-btn kbd{display:none}}
+/* touch zoom in the viewer: the app handles pinch and pan, the browser doesn't */
+.lightbox:not(.full) .lb-stage{touch-action:none}
+#lbImg{transform-origin:0 0}
+.lightbox.zoomed .lb-stage{overflow:visible}
+.lightbox.zoomed .lb-prev,.lightbox.zoomed .lb-next{visibility:hidden}
+.sw-zoom{position:absolute;top:18px;right:10px;z-index:1;display:grid;place-items:center;width:40px;height:40px;border:0;border-radius:50%;background:#000a;color:var(--text)}
+.sw-zoom:hover{background:#000d}
+.lightbox.zoomed .lb-close,.lightbox.zoomed .lb-bar{z-index:2}
+.lightbox.zoomed .lb-bar{background:#000b;padding:8px 14px;border-radius:var(--r-m);margin-bottom:10px}
+.lightbox.zoomed .lb-close{background:#000a}

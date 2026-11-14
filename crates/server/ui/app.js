@@ -353,6 +353,7 @@ const V = {images: [], i: 0, opener: null, full: false, dragged: false};
 const viewerOpen = () => !$("#lightbox").hidden;
 function showShot() {
   const n = V.images.length, url = V.images[V.i];
+  zoomReset(false);
   $("#lbImg").src = url;
   $("#lbStage").scrollTo(0, 0);
   $("#lbOpen").href = url;
@@ -372,8 +373,9 @@ function openViewer(images, i) {
   V.images = images; V.i = i; V.opener = document.activeElement;
   $("#lightbox").hidden = false; revealShots(false); showShot(); $(".lb-close").focus();
 }
-function closeViewer() { setFull(false); revealShots(false); $("#lightbox").hidden = true; $("#lbImg").removeAttribute("src"); V.opener?.focus?.(); }
+function closeViewer() { zoomReset(false); setFull(false); revealShots(false); $("#lightbox").hidden = true; $("#lbImg").removeAttribute("src"); V.opener?.focus?.(); }
 function setFull(on) {
+  if (on) zoomReset(false);
   V.full = on; V.dragged = false; $("#lightbox").classList.toggle("full", on);
   $("#lbSize").setAttribute("aria-pressed", on); $("#lbSize").textContent = on ? "Fit to screen" : "Full size";
   revealShots($("#lightbox").classList.contains("reveal"));
@@ -385,8 +387,8 @@ $("#lightbox").addEventListener("click", e => {
   else if (act === "next") stepViewer(1);
   else if (act === "size") setFull(!V.full);
   else if (act === "reveal") revealShots(true);
-  else if (e.target.id === "lbImg") { if (viewerBlurred()) revealShots(true); else if (!V.dragged) setFull(!V.full); }
-  else if (act === "close" || e.target.id === "lightbox" || (e.target.id === "lbStage" && !V.full)) closeViewer();
+  else if (e.target.id === "lbImg") { if (viewerBlurred()) revealShots(true); else if (!V.dragged && !V.touch) setFull(!V.full); }
+  else if (act === "close" || e.target.id === "lightbox" || (e.target.id === "lbStage" && !V.full && !V.dragged)) closeViewer();
 });
 // drag to move a full-size image; a click without movement toggles the size
 $("#lbStage").addEventListener("mousedown", e => {
@@ -401,13 +403,64 @@ $("#lbStage").addEventListener("mousedown", e => {
   const up = () => { st.classList.remove("drag"); removeEventListener("mousemove", move); removeEventListener("mouseup", up); };
   addEventListener("mousemove", move); addEventListener("mouseup", up);
 });
-let touchX = null;
-$("#lightbox").addEventListener("touchstart", e => { touchX = e.touches[0].clientX; }, {passive: true});
-$("#lightbox").addEventListener("touchend", e => {
-  if (touchX === null || V.full) return; // full size: swipes scroll the image
-  const dx = e.changedTouches[0].clientX - touchX; touchX = null;
-  if (Math.abs(dx) > 40) stepViewer(dx < 0 ? 1 : -1);
+// Touch: pinch to zoom, drag to pan while zoomed, double-tap to zoom in or back out.
+// A one-finger swipe changes the screenshot only at normal size.
+const Z = {s:1, x:0, y:0, pts:new Map(), start:null, pinched:false, tapT:0, tapX:0, tapY:0};
+function zoomApply(animate) {
+  const img = $("#lbImg");
+  img.style.transition = animate ? "transform .2s ease" : "none";
+  img.style.transform = Z.s === 1 ? "" : `translate(${Z.x}px, ${Z.y}px) scale(${Z.s})`;
+  $("#lightbox").classList.toggle("zoomed", Z.s > 1);
+}
+function zoomReset(animate) { Z.s = 1; Z.x = Z.y = 0; zoomApply(animate); }
+// Where the image sits unzoomed (transform-origin is its top-left corner).
+function zoomBase() { const r = $("#lbImg").getBoundingClientRect(); return {left: r.left - Z.x, top: r.top - Z.y}; }
+// Scale to s while the picture point under (fromX, fromY) moves to (toX, toY).
+function zoomAround(s, from, to, st) {
+  const ux = (from.x - st.base.left - st.x) / st.s, uy = (from.y - st.base.top - st.y) / st.s;
+  Z.s = s; Z.x = to.x - st.base.left - s * ux; Z.y = to.y - st.base.top - s * uy;
+}
+const touchMid = () => {
+  const p = [...Z.pts.values()];
+  return p.length > 1 ? {x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2, d: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y)} : {...p[0], d: 0};
+};
+function zoomStart() { Z.start = {s: Z.s, x: Z.x, y: Z.y, base: zoomBase(), m: touchMid()}; }
+const stage = $("#lbStage");
+stage.addEventListener("pointerdown", e => {
+  V.touch = e.pointerType === "touch"; // touch taps also fire mouse events, so ask the pointer
+  if (!V.touch || V.full) return;
+  if (!Z.pts.size) { V.dragged = false; Z.pinched = false; }
+  Z.pts.set(e.pointerId, {x: e.clientX, y: e.clientY});
+  if (Z.pts.size > 1) Z.pinched = true;
+  zoomStart();
 });
+stage.addEventListener("pointermove", e => {
+  if (!Z.pts.has(e.pointerId)) return;
+  Z.pts.set(e.pointerId, {x: e.clientX, y: e.clientY});
+  const st = Z.start, m = touchMid();
+  if (Z.pts.size > 1 || Math.hypot(m.x - st.m.x, m.y - st.m.y) > 8) V.dragged = true;
+  if (Z.pts.size > 1 && st.m.d) { zoomAround(Math.min(6, Math.max(1, st.s * m.d / st.m.d)), st.m, m, st); zoomApply(false); }
+  else if (Z.s > 1) { Z.x = st.x + m.x - st.m.x; Z.y = st.y + m.y - st.m.y; zoomApply(false); }
+});
+const zoomEnd = e => {
+  if (!Z.pts.has(e.pointerId)) return;
+  const st = Z.start;
+  Z.pts.delete(e.pointerId);
+  if (Z.pts.size) return zoomStart(); // one finger lifted: carry on with the other
+  if (Z.s < 1.05) zoomReset(true);
+  if (e.type === "pointercancel" || Z.pinched) return;
+  const dx = e.clientX - st.m.x, dy = e.clientY - st.m.y;
+  if (Z.s === 1 && Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) return stepViewer(dx < 0 ? 1 : -1);
+  if (V.dragged || e.target.id !== "lbImg") return;
+  const now = Date.now();
+  if (now - Z.tapT < 300 && Math.hypot(e.clientX - Z.tapX, e.clientY - Z.tapY) < 30) {
+    Z.tapT = 0;
+    if (Z.s > 1) zoomReset(true);
+    else { const p = {x: e.clientX, y: e.clientY}; zoomAround(2.5, p, p, {s: 1, x: 0, y: 0, base: zoomBase()}); zoomApply(true); }
+  } else { Z.tapT = now; Z.tapX = e.clientX; Z.tapY = e.clientY; }
+};
+stage.addEventListener("pointerup", zoomEnd);
+stage.addEventListener("pointercancel", zoomEnd);
 
 /* ===== session tally: what you sorted since opening bbt ===== */
 const tally = (() => { try { return JSON.parse(sessionStorage.getItem("bbt_tally")) ?? {}; } catch { return {}; } })();
@@ -569,6 +622,7 @@ function renderSwMedia() {
   m.classList.toggle("revealed", SW.revealed);
   m.innerHTML = `<span class="sw-code">${esc(code(it))}</span>${url ? `<img src="${esc(url)}" alt="" referrerpolicy="no-referrer" draggable="false" onerror="this.remove()">` : ""}
   ${slides.length > 1 ? `<div class="sw-bars" aria-hidden="true">${slides.map((_, i) => `<i class="${i === SW.photo ? "on" : ""}"></i>`).join("")}</div>` : ""}${note}
+  ${url ? `<button class="sw-zoom" data-sw="zoom" aria-label="View full screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-6 6M4 20l6-6"/></svg></button>` : ""}
   ${url && swBlurred() ? `<button class="sw-reveal" data-sw="reveal">Show (${esc(keyOf("lbReveal"))})</button>` : ""}`;
   if (slides[SW.photo + 1]) new Image().src = slides[SW.photo + 1];
 }
@@ -576,6 +630,7 @@ function swHint() {
   const h = $("#swHint"); if (!h) return;
   h.classList.toggle("rating", !!rateArmed && SW.open);
   h.textContent = rateArmed && SW.open ? "Rate it: press 1–5, or 0 to clear."
+    : touch() ? "Tap the sides to flip screenshots, or the corner button to zoom."
     : `Space: next screenshot. Enter: full size. ${keyOf("undo")}: undo. ${keyOf("rate")}: rate. Esc: leave.`;
 }
 function renderSwipe() {
@@ -674,6 +729,7 @@ $("#swipe").addEventListener("click", e => {
   const a = e.target.closest("[data-sw]")?.dataset.sw;
   if (a === "close") closeSwipe();
   else if (a === "reveal") swReveal();
+  else if (a === "zoom") swFull();
   else if (MARKS[a]) swDecide(a);
 });
 // Drag the card: past the line it's a decision, short of it the card springs back.
