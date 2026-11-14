@@ -42,6 +42,8 @@ impl AppState {
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/", get(index))
+        .route("/style.css", get(style))
+        .route("/app.js", get(script))
         .route("/api/summary", get(summary))
         .route("/api/torrents", get(torrents))
         .route("/api/marks", post(set_marks))
@@ -80,8 +82,23 @@ impl From<anyhow::Error> for ApiError {
 
 type ApiResult<T> = Result<Json<T>, ApiError>;
 
+// The UI is embedded so the binary runs on its own.
 async fn index() -> Html<&'static str> {
-    Html("<!doctype html><title>bbt</title><p>bbt API is running. The inbox UI comes next.</p>")
+    Html(include_str!("../ui/index.html"))
+}
+
+async fn style() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+        include_str!("../ui/style.css"),
+    )
+}
+
+async fn script() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        include_str!("../ui/app.js"),
+    )
 }
 
 #[derive(Deserialize)]
@@ -514,6 +531,16 @@ mod tests {
         assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
         let (st, _) = call(&app, "GET", "/api/torrents/2/download", None).await;
         assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn serves_the_ui() {
+        let (app, _dir) = app().await;
+        for path in ["/", "/style.css", "/app.js"] {
+            let req = Request::builder().uri(path).body(Body::empty()).unwrap();
+            let resp = app.clone().oneshot(req).await.unwrap();
+            assert_eq!(resp.status(), StatusCode::OK, "{path}");
+        }
     }
 
     #[test]
