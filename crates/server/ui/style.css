@@ -85,8 +85,6 @@ main{grid-area:main;overflow:auto;scroll-padding:60px 0 20px}
 .poster{width:48px;height:66px;border-radius:var(--r-s);overflow:hidden;position:relative;background:var(--g);display:grid;place-items:end start;padding:4px;font-size:9px;font-weight:600;color:#fff8;letter-spacing:.02em}
 .blur .poster>span,.blur .card .poster>span{filter:blur(4px)}
 .blur .poster{filter:saturate(.4)}
-.blur .row:hover .poster,.blur .card:hover .poster{filter:none}
-.blur .row:hover .poster>span,.blur .card:hover .poster>span{filter:none}
 .meta{min-width:0;display:flex;flex-direction:column;gap:3px}
 .title{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tags{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted);min-width:0}
@@ -207,12 +205,12 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
 /* ---- real-data additions ---- */
 .poster img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .blur .poster img{filter:blur(8px)}
-.blur .row:hover .poster img,.blur .card:hover .poster img,.blur .drawer .big:hover .poster img{filter:none}
+.blur .card .poster img{filter:blur(18px)}
+.blur .drawer .big .poster img{filter:blur(14px)}
 .shots{grid-template-columns:repeat(2,1fr)}
 .shots a{display:block;border-radius:var(--r-s);overflow:hidden;background:var(--raise)}
 .shots img{display:block;width:100%;height:auto}
 .blur .shots img{filter:blur(12px)}
-.blur .shots a:hover img{filter:none}
 .banner{grid-column:1/-1;background:#5A2333;color:#FFD9E2;padding:8px 20px;font-size:13px}
 .sync .prog.busy i{width:35%;animation:slide 1.2s ease-in-out infinite}
 @keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(290%)}}
@@ -243,6 +241,9 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
 .lb-bar a{color:var(--muted)}
 .lb-bar a:hover{color:var(--text)}
 .shots a{cursor:zoom-in}
+.blur .lightbox:not(.reveal) .lb-stage img{filter:blur(32px)}
+/* hold Option/Alt: everything blurred shows while the key is down */
+.blur.peek .poster,.blur.peek .poster>span,.blur.peek .poster img,.blur.peek .shots img,.blur.peek .lightbox .lb-stage img{filter:none}
 @media (max-width:760px){.lightbox{grid-template-columns:44px minmax(0,1fr) 44px}.lb-btn{width:38px;height:38px;font-size:22px}}
 
 .cats-head{display:flex;align-items:baseline;gap:4px;margin:0 8px 6px 0}

@@ -280,16 +280,23 @@ function showShot() {
   $(".lb-prev").hidden = $(".lb-next").hidden = n < 2;
   for (const d of [-1, 1]) new Image().src = V.images[(V.i + d + n) % n]; // preload neighbours
 }
+// With Blur posters on, screenshots stay blurred until shown on purpose (v or a click).
+const viewerBlurred = () => document.body.classList.contains("blur") && !$("#lightbox").classList.contains("reveal");
+function revealShots(on) {
+  $("#lightbox").classList.toggle("reveal", on);
+  $("#lbReveal").hidden = !viewerBlurred();
+  $("#lbImg").title = viewerBlurred() ? "Click to show (v)" : V.full ? "Drag to move, click to fit (f)" : "Click for full size (f)";
+}
 function openViewer(images, i) {
   if (!images.length) return;
   V.images = images; V.i = i; V.opener = document.activeElement;
-  $("#lightbox").hidden = false; showShot(); $(".lb-close").focus();
+  $("#lightbox").hidden = false; revealShots(false); showShot(); $(".lb-close").focus();
 }
-function closeViewer() { setFull(false); $("#lightbox").hidden = true; $("#lbImg").removeAttribute("src"); V.opener?.focus?.(); }
+function closeViewer() { setFull(false); revealShots(false); $("#lightbox").hidden = true; $("#lbImg").removeAttribute("src"); V.opener?.focus?.(); }
 function setFull(on) {
   V.full = on; V.dragged = false; $("#lightbox").classList.toggle("full", on);
   $("#lbSize").setAttribute("aria-pressed", on); $("#lbSize").textContent = on ? "Fit to screen" : "Full size";
-  $("#lbImg").title = on ? "Drag to move, click to fit (f)" : "Click for full size (f)";
+  revealShots($("#lightbox").classList.contains("reveal"));
 }
 function stepViewer(d) { const n = V.images.length; if (n > 1) { V.i = (V.i + d + n) % n; showShot(); } }
 $("#lightbox").addEventListener("click", e => {
@@ -297,7 +304,8 @@ $("#lightbox").addEventListener("click", e => {
   if (act === "prev") stepViewer(-1);
   else if (act === "next") stepViewer(1);
   else if (act === "size") setFull(!V.full);
-  else if (e.target.id === "lbImg") { if (!V.dragged) setFull(!V.full); }
+  else if (act === "reveal") revealShots(true);
+  else if (e.target.id === "lbImg") { if (viewerBlurred()) revealShots(true); else if (!V.dragged) setFull(!V.full); }
   else if (act === "close" || e.target.id === "lightbox" || (e.target.id === "lbStage" && !V.full)) closeViewer();
 });
 // drag to move a full-size image; a click without movement toggles the size
@@ -538,7 +546,10 @@ $("#from").onchange = e => { S.from = e.target.value; load(); };
 $("#sort").onchange = e => { S.sort = e.target.value; load(); };
 let qT; $("#q").oninput = e => { clearTimeout(qT); qT = setTimeout(() => { S.q = e.target.value.trim(); load(); }, 250); };
 $("#freeOnly").onchange = e => { S.free = e.target.checked; load(); };
-const setBlur = on => { document.body.classList.toggle("blur", on); $("#blurT").checked = on; };
+const setBlur = on => {
+  document.body.classList.toggle("blur", on); $("#blurT").checked = on;
+  if (viewerOpen()) revealShots($("#lightbox").classList.contains("reveal"));
+};
 $("#blurT").onchange = e => setBlur(e.target.checked);
 const setHideTitles = on => { document.body.classList.toggle("hide-titles", on); $("#hideT").checked = on; };
 $("#hideT").onchange = e => setHideTitles(e.target.checked);
@@ -562,6 +573,7 @@ document.addEventListener("keydown", e => {
     if (e.key === "ArrowRight" || e.key === "l") { e.preventDefault(); stepViewer(1); }
     else if (e.key === "ArrowLeft" || e.key === "h") { e.preventDefault(); stepViewer(-1); }
     else if (e.key === "f") { e.preventDefault(); setFull(!V.full); }
+    else if (e.key === "v") { e.preventDefault(); revealShots(true); }
     else if (e.key === "Escape") closeViewer();
     return;
   }
