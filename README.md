@@ -44,3 +44,9 @@ each load reads exactly one older tracker page, up to 40 pages a day, and stops 
 the From date.
 
 `cargo run -p bbt-server -- sync [--max-pages N]` runs one sync from the terminal.
+
+## Commit hooks
+
+`git config core.hooksPath .githooks` turns on the checks in `.githooks/`: commit
+subjects must be `type(scope): message`, and pushes are refused for commits not
+authored with the GitHub no-reply address.

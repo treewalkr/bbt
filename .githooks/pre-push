@@ -1,0 +1,8 @@
+#!/bin/sh
+# Blocks pushing commits whose author isn't the GitHub no-reply address.
+ok='170103824+treewalkr@users.noreply.github.com'
+bad=$(git log --format='%ae' --branches --not --remotes | grep -vx "$ok" | sort -u)
+if [ -n "$bad" ]; then
+  echo "pre-push: commits authored as $bad; use $ok" >&2
+  exit 1
+fi

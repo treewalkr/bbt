@@ -1,0 +1,20 @@
+#!/bin/sh
+# Rejects commit messages that break the commit rules.
+msg_file="$1"
+subject=$(grep -v '^#' "$msg_file" | head -n1)
+
+if grep -qi '^co-authored-by:' "$msg_file"; then
+  echo "commit-msg: remove the Co-Authored-By line" >&2
+  exit 1
+fi
+
+types='feat|fix|docs|chore|refactor|test|perf|ci|build|revert'
+if ! printf '%s' "$subject" | grep -qE "^($types)(\((domain|api|server|app)\))?!?: .+"; then
+  echo "commit-msg: subject must be 'type(scope): message' (scope: domain, api, server, app)" >&2
+  exit 1
+fi
+
+if [ ${#subject} -gt 72 ]; then
+  echo "commit-msg: subject is ${#subject} chars; keep it under 72" >&2
+  exit 1
+fi
