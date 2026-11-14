@@ -1,13 +1,13 @@
 //! Minimal tracker HTTP client: login, cookies, polite pacing, Thai decoding.
 
-use bbt_domain::is_login_page;
+use bbt_domain::{is_login_page, parse_download_gate};
 use rand::RngExt;
 use reqwest::header::{COOKIE, LOCATION, REFERER, SET_COOKIE, USER_AGENT};
 use reqwest::{Response, StatusCode, redirect};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::time::Duration;
-use tokio::time::{Instant, sleep_until};
+use tokio::time::{Instant, sleep, sleep_until};
 
 const UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 \
                   (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
@@ -31,6 +31,18 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct Download {
     pub bytes: Vec<u8>,
     pub content_disposition: Option<String>,
+}
+
+enum Fetched {
+    File(Download),
+    Page(String),
+}
+
+fn unexpected_page(path: &str, html: &str) -> Error {
+    Error::Unexpected {
+        path: path.into(),
+        detail: format!("got a page instead of a file: {}", summarize(html)),
+    }
 }
 
 /// Names that differ between sites. They live in `.env`, so the code names no site.
@@ -223,8 +235,28 @@ impl Client {
     }
 
     /// Download a file (a `.torrent`). Fails if tracker answers with an HTML page instead.
+    /// Download a file. When the site shows its countdown page first, wait it out and
+    /// follow the button, as a browser would.
     pub async fn fetch_file(&mut self, path: &str) -> Result<Download> {
-        let resp = self.send(self.request_get(path)).await?;
+        let html = match self.get_file(path, None).await? {
+            Fetched::File(file) => return Ok(file),
+            Fetched::Page(html) => html,
+        };
+        let gate = parse_download_gate(&html).ok_or_else(|| unexpected_page(path, &html))?;
+        sleep(Duration::from_secs(gate.wait_secs + 1)).await;
+        match self.get_file(&gate.path, Some(path)).await? {
+            Fetched::File(file) => Ok(file),
+            Fetched::Page(html) => Err(unexpected_page(&gate.path, &html)),
+        }
+    }
+
+    /// One GET that should return a file; an HTML page comes back as [`Fetched::Page`].
+    async fn get_file(&mut self, path: &str, referer: Option<&str>) -> Result<Fetched> {
+        let mut req = self.request_get(path);
+        if let Some(from) = referer {
+            req = req.header(REFERER, self.url(from));
+        }
+        let resp = self.send(req).await?;
         let status = resp.status();
         let header = |name| {
             resp.headers()
@@ -241,16 +273,19 @@ impl Client {
             });
         }
         let bytes = resp.bytes().await?;
-        if !status.is_success() || content_type.contains("html") {
+        if !status.is_success() {
             return Err(Error::Unexpected {
                 path: path.into(),
                 detail: format!("status {status}, {}", summarize(&decode(&bytes))),
             });
         }
-        Ok(Download {
+        if content_type.contains("html") {
+            return Ok(Fetched::Page(decode(&bytes)));
+        }
+        Ok(Fetched::File(Download {
             bytes: bytes.to_vec(),
             content_disposition: disposition,
-        })
+        }))
     }
 
     fn url(&self, path: &str) -> String {
