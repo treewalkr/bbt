@@ -4,3 +4,4 @@ members = ["crates/domain", "crates/server"]
 
 [workspace.package]
 edition = "2024"
+license = "MIT"
