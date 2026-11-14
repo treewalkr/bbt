@@ -1,7 +1,7 @@
 //! JSON API for the local inbox UI. Binds to localhost only (see `serve`).
 
 use crate::config::{self, Config};
-use crate::older::{self, Fit};
+use crate::older::{self, Cursor};
 use crate::queries::{Filter, Mark, Sort, View};
 use crate::store::Store;
 use crate::sync::{self, HARD_MAX_PAGES, Outcome};
@@ -118,6 +118,7 @@ async fn summary(
         "counts": sum,
         "last_sync": store.last_sync()?,
         "last_visit": store.get("last_visit")?.and_then(|v| v.parse::<i64>().ok()),
+        "coverage_from": coverage_from(&store)?,
     })))
 }
 
@@ -269,6 +270,15 @@ async fn run_sync(State(s): State<Arc<AppState>>) -> ApiResult<Value> {
     }))
 }
 
+/// Oldest upload time reached without gaps: the stored older-page boundary, or the
+/// oldest synced upload before any older page was loaded.
+fn coverage_from(store: &Store) -> anyhow::Result<Option<i64>> {
+    match store.get("older_frontier")?.and_then(|v| v.parse().ok()) {
+        Some(t) => Ok(Some(t)),
+        None => Ok(store.summary(None)?.oldest_uploaded_at),
+    }
+}
+
 /// Load exactly one older tracker list page (the user scrolled to the end).
 async fn load_older(State(s): State<Arc<AppState>>) -> ApiResult<Value> {
     let Some(cfg) = s.config.as_ref() else {
@@ -291,19 +301,25 @@ async fn load_older(State(s): State<Arc<AppState>>) -> ApiResult<Value> {
         if left == 0 {
             return Ok(Json(json!({ "status": "budget", "budget_left": 0 })));
         }
-        let Some(frontier) = store.summary(None)?.oldest_uploaded_at else {
+        let Some(frontier) = coverage_from(&store)? else {
             return Err(ApiError(
                 StatusCode::CONFLICT,
                 "sync once before loading older uploads".into(),
             ));
         };
         let cursor = match store.get("older_cursor")?.and_then(|c| c.parse().ok()) {
-            Some(c) => c,
+            Some(page) => Cursor {
+                page,
+                linked: store.get("older_linked")?.as_deref() == Some("1"),
+            },
             None => {
                 let known = store.count_uploaded_since(frontier)?;
                 let last = store.last_sync()?.map_or(now, |r| r.started_at);
                 let rate = known as f64 / (last - frontier).max(3600) as f64;
-                older::initial_cursor(known, rate, now - last)
+                Cursor {
+                    page: older::initial_page(known, rate, now - last),
+                    linked: false,
+                }
             }
         };
         (frontier, cursor)
@@ -314,10 +330,10 @@ async fn load_older(State(s): State<Arc<AppState>>) -> ApiResult<Value> {
         *client = Some(config::client(&*s.store.lock().await, cfg)?);
     }
     let client = client.as_mut().expect("client was just set");
-    let path = if cursor == 0 {
+    let path = if cursor.page == 0 {
         "browse.php".to_string()
     } else {
-        format!("browse.php?page={cursor}")
+        format!("browse.php?page={}", cursor.page)
     };
     let result = client.fetch_html(&path, &cfg.creds).await;
 
@@ -332,21 +348,22 @@ async fn load_older(State(s): State<Arc<AppState>>) -> ApiResult<Value> {
             "tracker page layout not recognised".into(),
         ));
     }
-    let Some(fit) = older::classify(&page, frontier) else {
+    let Some(step) = older::step(cursor, &page, frontier) else {
         return Err(ApiError(
             StatusCode::BAD_GATEWAY,
-            format!("tracker page {cursor} was empty"),
+            format!("tracker page {} was empty", cursor.page),
         ));
     };
     let added = store.upsert_torrents(&page.torrents, now)?;
-    let next = older::next_cursor(cursor, fit, &page, frontier);
-    store.set("older_cursor", &next.to_string())?;
+    store.set("older_frontier", &step.frontier.to_string())?;
+    store.set("older_cursor", &step.next.page.to_string())?;
+    store.set("older_linked", if step.next.linked { "1" } else { "0" })?;
     Ok(Json(json!({
         "status": "done",
-        "page": cursor,
+        "page": cursor.page,
         "added": added,
-        "fit": match fit { Fit::Overlap => "overlap", Fit::Newer => "newer", Fit::Older => "older" },
-        "frontier": store.summary(None)?.oldest_uploaded_at,
+        "outcome": step.outcome.as_str(),
+        "frontier": step.frontier,
         "budget_left": older::budget_left(Some(&budget), &today),
     })))
 }

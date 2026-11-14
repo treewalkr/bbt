@@ -160,12 +160,12 @@ function render() {
       ${S.grid ? `<div class="cards" role="listbox">${g.items.map(cardHTML).join("")}</div>` : `<div role="listbox">${g.items.map(it => rowHTML(it, byDay)).join("")}</div>`}</section>`;
     }).join("");
   }
-  const oldest = S.summary?.counts.oldest_uploaded_at;
+  const oldest = S.summary?.coverage_from;
   if (S.view === "all" && S.sort === "new" && S.summary?.counts.total) {
     main.insertAdjacentHTML("beforeend", olderHTML());
     const el = $("#older"); if (el) olderObserver.observe(el);
   } else if (oldest && S.view === "new" && cutoff() < oldest - 3600) {
-    main.insertAdjacentHTML("beforeend", `<p class="coverage">bbt has uploads back to ${fmtWhen(oldest)}. Earlier ones were never synced, so this list can't go further back. Each sync adds from where the last one stopped.</p>`);
+    main.insertAdjacentHTML("beforeend", `<p class="coverage">bbt has every upload back to ${fmtWhen(oldest)}. Earlier ones aren't loaded yet, so this list can't go further back. Open Everything and scroll to the end to load older pages.</p>`);
   }
   if (keepBanner) main.prepend(keepBanner);
   renderNav(); renderBins(); renderTarget(); renderSyncText();
@@ -314,7 +314,7 @@ function groupIds(id) {
 /* ===== older pages (Everything, scroll to the end) ===== */
 const O = {busy:false, msg:"", budgetLeft:null, error:false};
 function olderBlocked() {
-  const oldest = S.summary?.counts.oldest_uploaded_at;
+  const oldest = S.summary?.coverage_from;
   if (oldest && oldest <= cutoff()) return `Reached the start of your From date (${fmtWhen(cutoff())}). Pick an earlier date to load more.`;
   if (O.budgetLeft === 0) return "Daily limit reached: 40 tracker pages. More tomorrow.";
   return null;

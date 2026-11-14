@@ -1,9 +1,10 @@
 //! Loading older uploads one tracker page at a time, driven by the user scrolling.
 //!
-//! tracker lists newest first, so page numbers drift as new uploads arrive. The cursor
-//! remembers the last page read; each step classifies the page against the frontier
-//! (oldest synced upload) and moves the cursor so pages are never skipped: drift only
-//! causes overlap, which is harmless.
+//! tracker lists newest first and page numbers drift as new uploads arrive: an upload
+//! pushes every older row one place further back. Drift therefore only ever makes the
+//! next page repeat rows already read; it never skips any. Rows can only be skipped
+//! when the loader jumps more than one page, so the state remembers whether the page
+//! about to be read directly follows a page that reached the gap-free boundary.
 
 use bbt_domain::ListPage;
 
@@ -11,68 +12,105 @@ use bbt_domain::ListPage;
 pub const DAILY_PAGE_BUDGET: u32 = 40;
 pub const PER_PAGE: u64 = 50;
 
+/// Where the loader stands between requests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Fit {
-    /// Page reaches past the frontier: progress.
-    Overlap,
-    /// Whole page is newer than the frontier (pages drifted): jump forward.
-    Newer,
-    /// Whole page is older than the frontier (jumped too far): step back.
-    Older,
+pub struct Cursor {
+    /// Next tracker page to read (0 = newest).
+    pub page: u32,
+    /// True when `page` directly follows a page that reached the boundary, so
+    /// nothing can lie between them.
+    pub linked: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    /// The page joined the gap-free range; the boundary moved back.
+    Extended,
+    /// Every row was newer than the boundary (pages drifted): move forward.
+    TooNew,
+    /// Every row was older than the boundary after a jump: there may be rows in
+    /// between, so step back.
+    Overshot,
+}
+
+impl Outcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Outcome::Extended => "extended",
+            Outcome::TooNew => "too_new",
+            Outcome::Overshot => "overshot",
+        }
+    }
+}
+
+/// Result of reading one page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Step {
+    pub outcome: Outcome,
+    /// Oldest upload time reached without gaps.
+    pub frontier: i64,
+    pub next: Cursor,
 }
 
 /// `(oldest, newest)` upload times of the non-sticky rows on a page.
 fn span(page: &ListPage) -> Option<(i64, i64)> {
-    let times = page
+    let mut times = page
         .torrents
         .iter()
         .filter(|t| !t.sticky)
         .map(|t| t.uploaded_at.timestamp());
-    let (mut lo, mut hi) = (i64::MAX, i64::MIN);
-    for t in times {
-        lo = lo.min(t);
-        hi = hi.max(t);
-    }
-    (lo <= hi).then_some((lo, hi))
+    let first = times.next()?;
+    Some(times.fold((first, first), |(lo, hi), t| (lo.min(t), hi.max(t))))
 }
 
-pub fn classify(page: &ListPage, frontier: i64) -> Option<Fit> {
+/// Pages that `gap_secs` of uploads fill, at the rate seen on this page.
+fn pages_for(gap_secs: i64, oldest: i64, newest: i64) -> u32 {
+    let per_sec = PER_PAGE as f64 / (newest - oldest).max(60) as f64;
+    ((gap_secs.max(0) as f64 * per_sec) / PER_PAGE as f64).floor() as u32
+}
+
+/// Decide what reading `page` at `at` means for a gap-free range ending at `frontier`.
+/// Returns `None` for a page with no rows.
+pub fn step(at: Cursor, page: &ListPage, frontier: i64) -> Option<Step> {
     let (oldest, newest) = span(page)?;
     Some(if oldest >= frontier {
-        Fit::Newer
-    } else if newest < frontier {
-        Fit::Older
+        // Whole page is at or above the boundary. One page forward is adjacent;
+        // a bigger jump (estimated from drift) is not.
+        let jump = pages_for(oldest - frontier, oldest, newest).max(1);
+        Step {
+            outcome: Outcome::TooNew,
+            frontier,
+            next: Cursor {
+                page: at.page + jump,
+                linked: jump == 1,
+            },
+        }
+    } else if newest >= frontier || at.linked {
+        // Reaches across the boundary, or directly follows a page that did.
+        Step {
+            outcome: Outcome::Extended,
+            frontier: oldest,
+            next: Cursor {
+                page: at.page + 1,
+                linked: true,
+            },
+        }
     } else {
-        Fit::Overlap
+        let back = pages_for(frontier - newest, oldest, newest).max(1);
+        Step {
+            outcome: Outcome::Overshot,
+            frontier,
+            next: Cursor {
+                page: at.page.saturating_sub(back),
+                linked: false,
+            },
+        }
     })
-}
-
-/// Where to read next, given the page just read at `cursor`.
-pub fn next_cursor(cursor: u32, fit: Fit, page: &ListPage, frontier: i64) -> u32 {
-    let pages_between = |gap_secs: i64| -> u32 {
-        let Some((oldest, newest)) = span(page) else {
-            return 1;
-        };
-        // Upload rate seen on this page, in uploads per second.
-        let rate = PER_PAGE as f64 / (newest - oldest).max(60) as f64;
-        ((gap_secs.max(0) as f64 * rate) / PER_PAGE as f64).floor() as u32
-    };
-    match fit {
-        Fit::Overlap => cursor + 1,
-        Fit::Newer => {
-            let (oldest, _) = span(page).unwrap_or((frontier, frontier));
-            cursor + pages_between(oldest - frontier).max(1)
-        }
-        Fit::Older => {
-            let (_, newest) = span(page).unwrap_or((frontier, frontier));
-            cursor.saturating_sub(pages_between(frontier - newest).max(1))
-        }
-    }
 }
 
 /// First guess at the page holding the frontier: torrents we know are newer, plus
 /// uploads since the last sync at the recent rate. Rounded down so we start early.
-pub fn initial_cursor(known_newer: u64, uploads_per_sec: f64, secs_since_sync: i64) -> u32 {
+pub fn initial_page(known_newer: u64, uploads_per_sec: f64, secs_since_sync: i64) -> u32 {
     let since = (uploads_per_sec * secs_since_sync.max(0) as f64) as u64;
     ((known_newer + since) / PER_PAGE) as u32
 }
@@ -97,69 +135,164 @@ mod tests {
     use super::*;
     use bbt_domain::ListedTorrent;
     use chrono::{TimeZone, Utc};
+    use std::collections::BTreeSet;
 
-    /// 50 rows, one per minute, newest at `newest`.
-    fn page(newest: i64) -> ListPage {
-        ListPage {
-            torrents: (0..50)
-                .map(|i| ListedTorrent {
-                    id: i,
-                    hash_id: i,
-                    category: 3,
-                    title: "t".into(),
-                    poster_url: None,
-                    preview_url: None,
-                    uploaded_at: Utc.timestamp_opt(newest - i as i64 * 60, 0).unwrap(),
-                    size_bytes: 1,
-                    files: 1,
-                    snatched: 0,
-                    seeders: 0,
-                    leechers: 0,
-                    free: None,
-                    multiplier: None,
-                    uploader_id: None,
-                    uploader: None,
-                    sticky: false,
-                })
-                .collect(),
-            skipped: 0,
+    fn row(id: u64, at: i64) -> ListedTorrent {
+        ListedTorrent {
+            id,
+            hash_id: id,
+            category: 3,
+            title: "t".into(),
+            poster_url: None,
+            preview_url: None,
+            uploaded_at: Utc.timestamp_opt(at, 0).unwrap(),
+            size_bytes: 1,
+            files: 1,
+            snatched: 0,
+            seeders: 0,
+            leechers: 0,
+            free: None,
+            multiplier: None,
+            uploader_id: None,
+            uploader: None,
+            sticky: false,
         }
     }
 
-    const F: i64 = 1_000_000;
+    /// Fake tracker list: newest first, one upload a minute, id = upload minute.
+    struct Site {
+        newest_minute: i64,
+    }
 
-    #[test]
-    fn classifies_against_frontier() {
-        assert_eq!(classify(&page(F + 600), F), Some(Fit::Overlap));
-        assert_eq!(classify(&page(F + 10_000), F), Some(Fit::Newer));
-        assert_eq!(classify(&page(F - 60), F), Some(Fit::Older));
-        assert_eq!(classify(&ListPage::default(), F), None);
+    impl Site {
+        fn page(&self, n: u32) -> ListPage {
+            let start = self.newest_minute - i64::from(n) * PER_PAGE as i64;
+            ListPage {
+                torrents: (0..PER_PAGE as i64)
+                    .map(|i| start - i)
+                    .filter(|m| *m >= 0)
+                    .map(|m| row(m as u64, m * 60))
+                    .collect(),
+                skipped: 0,
+            }
+        }
+    }
+
+    /// Read pages until the boundary passes `target` (a minute). `gap` uploads arrive
+    /// before the first read (time away), then `drift` before each later one.
+    /// Everything from `known_from` up is already known.
+    /// Returns every id known at the end and the number of requests.
+    fn walk(
+        start: Cursor,
+        known_from: i64,
+        target: i64,
+        gap: i64,
+        drift: i64,
+    ) -> (BTreeSet<u64>, u32) {
+        let mut site = Site {
+            newest_minute: 10_000,
+        };
+        let mut seen: BTreeSet<u64> = (known_from as u64..=10_000).collect();
+        let mut at = start;
+        let mut frontier = known_from * 60;
+        let mut requests = 0;
+        while frontier > target * 60 {
+            assert!(requests < 100, "did not converge");
+            site.newest_minute += if requests == 0 { gap } else { drift };
+            let page = site.page(at.page);
+            requests += 1;
+            seen.extend(page.torrents.iter().map(|t| t.id));
+            let s = step(at, &page, frontier).unwrap();
+            frontier = s.frontier;
+            at = s.next;
+        }
+        (seen, requests)
+    }
+
+    fn assert_no_gap(seen: &BTreeSet<u64>, from: i64) {
+        let missing: Vec<i64> = (from..=10_000)
+            .filter(|id| !seen.contains(&(*id as u64)))
+            .collect();
+        assert!(missing.is_empty(), "skipped ids {missing:?}");
     }
 
     #[test]
-    fn overlap_steps_one_page() {
-        assert_eq!(next_cursor(4, Fit::Overlap, &page(F + 600), F), 5);
+    fn walks_back_page_by_page() {
+        // Known down to minute 9_801 (bottom of page 3); page 4 directly follows.
+        let (seen, requests) = walk(
+            Cursor {
+                page: 4,
+                linked: true,
+            },
+            9_801,
+            9_500,
+            0,
+            0,
+        );
+        assert_no_gap(&seen, 9_500);
+        assert_eq!(requests, 7);
     }
 
     #[test]
-    fn newer_jumps_by_estimated_drift() {
-        // Oldest row is 2h (≈ 120 uploads ≈ 2.4 pages) above the frontier.
-        let p = page(F + 49 * 60 + 7200);
-        assert_eq!(next_cursor(3, Fit::Newer, &p, F), 5);
-        // Small drift still moves at least one page.
-        assert_eq!(next_cursor(3, Fit::Newer, &page(F + 49 * 60 + 60), F), 4);
+    fn boundary_exactly_between_pages_does_not_bounce() {
+        // Unlinked start on page 3 (all at/above the boundary), page 4 all older.
+        let (seen, requests) = walk(
+            Cursor {
+                page: 3,
+                linked: false,
+            },
+            9_801,
+            9_700,
+            0,
+            0,
+        );
+        assert_no_gap(&seen, 9_700);
+        // Page 3 (all newer) → 4, 5, 6: no back-and-forth.
+        assert_eq!(requests, 4);
     }
 
     #[test]
-    fn older_steps_back_without_underflow() {
-        assert_eq!(next_cursor(10, Fit::Older, &page(F - 7200), F), 8);
-        assert_eq!(next_cursor(0, Fit::Older, &page(F - 7200), F), 0);
+    fn overshoot_steps_back_and_fills_the_gap() {
+        let (seen, _) = walk(
+            Cursor {
+                page: 9,
+                linked: false,
+            },
+            9_801,
+            9_500,
+            0,
+            0,
+        );
+        assert_no_gap(&seen, 9_500);
+    }
+
+    #[test]
+    fn drift_between_reads_never_skips() {
+        // Time away (any number of uploads), then a few uploads between scrolls.
+        for gap in [0, 1, 7, 30, 49, 50, 51, 120, 777] {
+            for drift in [0, 1, 2] {
+                for linked in [true, false] {
+                    let at = Cursor { page: 4, linked };
+                    let (seen, _) = walk(at, 9_801, 9_000, gap, drift);
+                    assert_no_gap(&seen, 9_000);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn empty_page_is_none() {
+        let at = Cursor {
+            page: 0,
+            linked: true,
+        };
+        assert_eq!(step(at, &ListPage::default(), 0), None);
     }
 
     #[test]
     fn initial_guess_rounds_down() {
-        assert_eq!(initial_cursor(58, 21.0 / 3600.0, 3600), 1);
-        assert_eq!(initial_cursor(10, 0.0, 0), 0);
+        assert_eq!(initial_page(58, 21.0 / 3600.0, 3600), 1);
+        assert_eq!(initial_page(10, 0.0, 0), 0);
     }
 
     #[test]
