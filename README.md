@@ -26,7 +26,12 @@ set `BBT_DB=data/bbt.db` in `.env`.
 ## Keys
 
 `j`/`k` move, `1`–`4` sort, `0` back to New, `Shift 1` mark the day's new torrents viewed (press twice above 20),
-`Enter` (or a second click) details, `u` undo, `/` search, `?` all shortcuts.
+`Enter` or `l` (or a second click) details, `u` undo, `/` search, `?` all shortcuts.
+To change a key, press `?` and click it; Reset to defaults puts them all back.
+
+`s` (or **Swipe** in the toolbar) shows new torrents one card at a time: `←` or swipe left passes (Viewed),
+`↑` saves for later (View later), `→` keeps (Download later). `Space` flips screenshots, `Enter` shows one full size.
+Screenshots load only for a card you stay on, through the usual 3-second tracker pacing.
 
 ## Sync limits
 
