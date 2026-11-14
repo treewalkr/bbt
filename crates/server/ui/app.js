@@ -40,7 +40,7 @@ const S = {
   view:"new", cats:loadCats(), range:"0", from:"", sort:"new", q:"",
   grid:false, free:false, sticky:localStorage.getItem("bbt_sticky")==="1",
   items:[], summary:null, lastVisit:null, focus:null, sel:new Set(), undo:null, drawer:null,
-  syncing:false, loadSeq:0,
+  syncing:false, loadSeq:0, keys:localStorage.getItem("bbt_keys") !== "0",
 };
 const $ = s => document.querySelector(s);
 const touch = () => matchMedia("(pointer: coarse)").matches;
@@ -158,7 +158,7 @@ const stat = () => STATS[S.sort] ?? STATS.seed;
 function rowHTML(it, byDay) {
   const [, key] = stat();
   return `<div class="row${S.focus === it.id ? " focus" : ""}" data-id="${it.id}" data-state="${stateAttr(it)}" role="option" aria-selected="${S.focus === it.id}">
-  <i class="bar"></i><input class="sel" type="checkbox" aria-label="Select" ${S.sel.has(it.id) ? "checked" : ""}>
+  <i class="bar"></i><label class="selbox"><input class="sel" type="checkbox" aria-label="Select ${esc(clean(it.title))}" ${S.sel.has(it.id) ? "checked" : ""}></label>
   ${poster(it)}
   <div class="meta"><div class="title" title="${esc(it.title)}">${esc(clean(it.title))}</div><div class="tags">${tags(it)}</div></div>
   <div class="num">${fmtSize(it.size_bytes)}<small>${it.files} file${it.files === 1 ? "" : "s"}</small></div>
@@ -167,7 +167,7 @@ function rowHTML(it, byDay) {
 }
 function cardHTML(it) {
   return `<div class="card${S.focus === it.id ? " focus" : ""}" data-id="${it.id}" data-state="${stateAttr(it)}" role="option">
-  ${poster(it)}<i class="flag"></i><input class="sel" type="checkbox" aria-label="Select" ${S.sel.has(it.id) ? "checked" : ""}>
+  ${poster(it)}<i class="flag"></i><label class="selbox"><input class="sel" type="checkbox" aria-label="Select ${esc(clean(it.title))}" ${S.sel.has(it.id) ? "checked" : ""}></label>
   <div class="title">${esc(clean(it.title))}</div><div class="tags">${it.rating ? `<span class="stars">★${it.rating}</span>` : ""}<span>${fmtSize(it.size_bytes)}</span><span>${it.seeders} seeding</span></div></div>`;
 }
 let shown = [];
@@ -263,7 +263,7 @@ function renderDrawer() {
     : d.images.length ? `<div class="shots">${d.images.map((u, i) => `<a href="${esc(u)}" data-shot="${i}" aria-label="View screenshot ${i + 1} of ${d.images.length}"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`).join("")}</div>`
     : `<p class="note">No screenshots on tracker for this torrent.</p>`;
   $("#drawerIn").innerHTML = `<header><span>${catsOn() ? esc(CATS[it.category] ?? `Category ${it.category}`) + " " : ""}<span style="color:var(--faint)">#${it.id}</span></span><button class="close" aria-label="Close details" data-act="close">×</button></header>
-  <div class="big">${poster(it)}<div style="display:flex;flex-direction:column;gap:10px"><h4>${esc(clean(it.title))}</h4>
+  <div class="big">${poster(it)}<div style="display:flex;flex-direction:column;gap:10px"><h4 tabindex="-1">${esc(clean(it.title))}</h4>
   <dl><dt>Uploaded</dt><dd>${fmtWhen(it.uploaded_at)}</dd><dt>By</dt><dd>${esc(it.uploader ?? "Anonymous")}</dd><dt>Size</dt><dd>${fmtSize(it.size_bytes)}, ${it.files} file${it.files === 1 ? "" : "s"}</dd></dl></div></div>
   <dl><dt>Seeding</dt><dd>${it.seeders}</dd><dt>Leeching</dt><dd>${it.leechers}</dd><dt>Snatched</dt><dd>${it.snatched}</dd><dt>Free download</dt><dd>${it.free ? esc(it.free) : "No"}</dd><dt>Counts updated</dt><dd>${fmtAgo(it.stats_at)}</dd></dl>
   ${shots}
@@ -272,7 +272,7 @@ function renderDrawer() {
   <div class="acts"><button class="primary" data-act="download" ${S.downloading ? "disabled" : ""}>${S.downloading ? "Downloading…" : "Download .torrent"}</button>${siteUrl(it) ? `<a href="${siteUrl(it)}" target="_blank" rel="noreferrer">Open on the tracker</a>` : ""}</div>
   <p class="note">Download fetches a fresh link from tracker and marks the torrent Downloaded.</p>`;
 }
-function openDrawer(id, {delay = 0} = {}) {
+function openDrawer(id, {delay = 0, focus = false} = {}) {
   S.drawer = id; $("#drawer").classList.add("open");
   clearTimeout(followT);
   if (!detailsCache.has(id) && !detailsBusy.has(id)) {
@@ -280,6 +280,7 @@ function openDrawer(id, {delay = 0} = {}) {
     else fetchDetails(id);
   }
   renderDrawer();
+  if (focus) $("#drawerIn h4")?.focus();
 }
 async function fetchDetails(id) {
   detailsBusy.set(id, "load");
@@ -290,7 +291,11 @@ async function fetchDetails(id) {
   clearTimeout(slow); detailsBusy.delete(id);
   if (S.drawer === id) renderDrawer();
 }
-function closeDrawer() { clearTimeout(followT); S.drawer = null; $("#drawer").classList.remove("open"); }
+function closeDrawer() {
+  const inside = $("#drawer").contains(document.activeElement);
+  clearTimeout(followT); S.drawer = null; $("#drawer").classList.remove("open");
+  if (inside) main.focus({preventScroll: true});
+}
 
 async function download(id) {
   if (S.downloading) return;
@@ -453,7 +458,7 @@ function move(d) {
   S.focus = n.id;
   const el = main.querySelector(`[data-id="${n.id}"]`);
   el?.classList.add("focus"); el?.scrollIntoView({block:"nearest"});
-  pick(); renderTarget();
+  pick(); renderTarget(); announce(n);
   if (S.drawer) openDrawer(n.id, {delay: FOLLOW_MS});
 }
 /* ===== bulk "mark viewed" =====
@@ -463,6 +468,11 @@ const BULK_CONFIRM = 20;
 let bulkArm = null; // {g, timer}
 const bulkable = () => S.view === "new" || S.view === "all";
 const bulkIdsOf = g => shown.find(x => x.key === g)?.items.filter(i => !i.mark).map(i => i.id) ?? [];
+// Rows are not tab stops (j/k move focus), so a live region reads the focused torrent.
+function announce(it) {
+  const i = flat.indexOf(it);
+  $("#announce").textContent = `${clean(it.title)}. ${fmtSize(it.size_bytes)}. ${MARKS[it.mark]?.label ?? "New"}. ${i + 1} of ${flat.length}.`;
+}
 const groupOf = id => shown.find(g => g.items.some(i => i.id === id))?.key;
 function bulkButton(g, n) {
   const armed = bulkArm?.g === g;
@@ -585,6 +595,7 @@ main.addEventListener("click", e => {
   if (e.target.closest("[data-act=older]")) { O.error = false; return loadOlder(); }
   const bulk = e.target.closest("[data-bulk]"); if (bulk) return bulkViewed(bulk.dataset.bulk);
   const r = e.target.closest("[data-id]"); if (!r) return;
+  if (e.target.matches(".selbox")) return; // the label forwards its click to the checkbox
   const id = +r.dataset.id;
   if (e.target.classList.contains("sel")) { S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); renderTarget(); return; }
   // First click focuses; clicking the focused torrent again opens its details.
@@ -651,6 +662,7 @@ $("#setBtn").onclick = () => $("#settings").showModal();
 $("#undoBtn").onclick = undo;
 $("#sOpen").onchange = e => localStorage.setItem("bbt_sync_on_open", e.target.checked ? "1" : "0");
 $("#sSticky").onchange = e => { S.sticky = e.target.checked; localStorage.setItem("bbt_sticky", S.sticky ? "1" : "0"); load(); };
+$("#sKeys").onchange = e => { S.keys = e.target.checked; localStorage.setItem("bbt_keys", S.keys ? "1" : "0"); };
 $("#sBlur").onchange = e => localStorage.setItem("bbt_blur", e.target.checked ? "1" : "0");
 $("#sHide").onchange = e => localStorage.setItem("bbt_hide_titles", e.target.checked ? "1" : "0");
 document.addEventListener("keydown", e => {
@@ -665,6 +677,8 @@ document.addEventListener("keydown", e => {
   if (e.target.matches?.("input[type=search],input[type=text],input[type=number],input[type=date],select")) { if (e.key === "Escape") e.target.blur(); return; }
   if (document.querySelector("dialog[open]") || e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key, step = S.grid ? gridCols() : 1;
+  // WCAG 2.1.4: single-character shortcuts can be turned off in Settings.
+  if (!S.keys && !["Escape", "Enter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(k)) return;
   if (rateArmed && /^[0-5]$/.test(k)) {
     armRate(false); e.preventDefault();
     return setRating(targets(), k === "0" ? null : +k);
@@ -682,7 +696,7 @@ document.addEventListener("keydown", e => {
   else if (k === "4") setMark(targets(), "downloaded", {advance:true});
   else if (k === "0") setMark(targets(), null);
   else if (k === "x" && S.focus) { const id = S.focus; S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); const c = main.querySelector(`[data-id="${id}"] .sel`); if (c) c.checked = S.sel.has(id); renderTarget(); }
-  else if (k === "Enter" && S.focus) openDrawer(S.focus);
+  else if (k === "Enter" && S.focus) openDrawer(S.focus, {focus: true});
   else if (k === "Escape") { disarmBulk(); setRail(false); closeDrawer(); if (S.sel.size) { S.sel.clear(); render(); } }
   else if (k === "o" && S.focus) { const it = S.items.find(i => i.id === S.focus); if (it && siteUrl(it)) window.open(siteUrl(it), "_blank", "noreferrer"); }
   else if (k === "u") undo();
@@ -697,6 +711,7 @@ document.addEventListener("keydown", e => {
   setBlur(localStorage.getItem("bbt_blur") !== "0");
   $("#sOpen").checked = localStorage.getItem("bbt_sync_on_open") === "1";
   $("#sSticky").checked = S.sticky;
+  $("#sKeys").checked = S.keys;
   $("#sBlur").checked = localStorage.getItem("bbt_blur") !== "0";
   setHideTitles(localStorage.getItem("bbt_hide_titles") === "1");
   $("#sHide").checked = localStorage.getItem("bbt_hide_titles") === "1";

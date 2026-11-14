@@ -1,6 +1,6 @@
 :root{
   --ink:#1B1622; --panel:#251E2E; --raise:#2F2639; --line:#3A3046;
-  --text:#EEE7F3; --muted:#9C90A9; --faint:#6E6379;
+  --text:#EEE7F3; --muted:#A79BB4; --faint:#8E839B; /* faint: 4.5:1 on panel, 5:1 on ink */
   --new:#E2557A; --viewed:#7D7290; --watch:#E8B04B; --get:#4FB3A9; --got:#8BC66E;
   --focus:#F2D3E0;
   --r-s:4px; --r-m:8px;
@@ -18,7 +18,10 @@ body{margin:0;height:100vh;display:grid;grid-template-columns:220px 1fr auto;gri
 button,input,select{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+::placeholder{color:var(--faint);opacity:1}
+main:focus{outline:none}
+.drawer h4:focus{outline:none}
 
 /* ---------- rail ---------- */
 .rail{grid-area:rail;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:16px 10px;gap:20px;overflow:auto}
@@ -54,7 +57,7 @@ button{cursor:pointer}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r-s);overflow:hidden}
 .seg button{border:0;background:var(--panel);padding:5px 10px;font-size:13px;color:var(--muted)}
 .seg button[aria-pressed=true]{background:var(--raise);color:var(--text)}
-.toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer}
+.toggle{display:flex;align-items:center;gap:6px;min-height:28px;font-size:13px;color:var(--muted);cursor:pointer}
 .toggle input{accent-color:var(--new)}
 .tools{display:contents}
 .tg{display:flex;align-items:center;gap:8px 12px;padding-left:14px;border-left:1px solid var(--line)}
@@ -74,12 +77,14 @@ main{grid-area:main;overflow:auto;scroll-padding:60px 0 20px}
 .ghead .act button{border:1px solid var(--line);background:none;border-radius:var(--r-s);padding:4px 10px;font-size:12px;color:var(--muted)}
 .ghead .act button:hover{color:var(--text);border-color:var(--muted)}
 
-.row{display:grid;grid-template-columns:4px 20px 48px minmax(0,1fr) 78px 64px 56px;align-items:center;gap:0 12px;padding:6px 20px 6px 0;min-height:var(--row);border-top:1px solid transparent;cursor:default;transition:background .1s}
+.row{display:grid;grid-template-columns:4px 24px 48px minmax(0,1fr) 78px 64px 56px;align-items:center;gap:0 12px;padding:6px 20px 6px 0;min-height:var(--row);border-top:1px solid transparent;cursor:default;transition:background .1s}
 .row:hover{background:#221B2A}
 .row.focus{background:var(--raise)}
 .row .bar{align-self:stretch;background:var(--state,transparent)}
 .row.focus .bar{background:var(--focus)}
-.row .sel{justify-self:center;accent-color:var(--new)}
+/* the whole cell is the checkbox's hit area */
+.selbox{align-self:stretch;display:grid;place-items:center;cursor:pointer}
+.sel{accent-color:var(--new);cursor:pointer}
 .row[data-state=new]{--state:var(--new)}
 .row[data-state=watch]{--state:var(--watch)}
 .row[data-state=get]{--state:var(--get)}
@@ -104,7 +109,7 @@ main.mixed .row[data-state=viewed] .title{color:var(--muted)}
 .num small{display:block;font-size:11px;color:var(--faint)}
 .num.hot{color:var(--got)}
 .time{text-align:right;font-size:12px;color:var(--muted)}
-.colhead{position:sticky;top:0;z-index:3;display:grid;grid-template-columns:4px 20px 48px minmax(0,1fr) 78px 64px 56px;gap:0 12px;padding:6px 20px 6px 0;font-size:11px;color:var(--faint);background:var(--ink);border-bottom:1px solid var(--line)}
+.colhead{position:sticky;top:0;z-index:3;display:grid;grid-template-columns:4px 24px 48px minmax(0,1fr) 78px 64px 56px;gap:0 12px;padding:6px 20px 6px 0;font-size:11px;color:var(--faint);background:var(--ink);border-bottom:1px solid var(--line)}
 .colhead span{text-align:right}
 .colhead span.l{text-align:left}
 .colhead + .group .ghead{top:27px}
@@ -121,7 +126,7 @@ main.has-colhead .ghead{top:27px}
 main:not(.mixed) .card .flag{display:none}
 main.mixed .card[data-state=viewed]{opacity:.55}
 .card[data-state=new]{--state:var(--new)}.card[data-state=watch]{--state:var(--watch)}.card[data-state=get]{--state:var(--get)}.card[data-state=got]{--state:var(--got)}
-.card .sel{position:absolute;top:10px;right:12px;accent-color:var(--new)}
+.card .selbox{position:absolute;top:6px;right:6px;width:32px;height:32px}
 
 .empty{padding:80px 20px;text-align:center;color:var(--muted)}
 .empty h3{font-family:"Bricolage Grotesque";font-size:30px;color:var(--text);margin:0 0 8px}
@@ -196,7 +201,7 @@ dialog .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 dialog .foot button{border:1px solid var(--line);background:var(--raise);border-radius:var(--r-s);padding:6px 14px}
 
 @media (max-width:1100px){
-  .row,.colhead{grid-template-columns:4px 20px 48px minmax(0,1fr) 70px 56px 52px}
+  .row,.colhead{grid-template-columns:4px 24px 48px minmax(0,1fr) 70px 56px 52px}
   .drawer.open{position:fixed;right:0;top:0;bottom:0;z-index:10}
 }
 @media (max-width:1100px){
@@ -223,7 +228,7 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
   .row,.colhead{grid-template-columns:4px 44px minmax(0,1fr) 64px;padding-right:12px}
   .colhead>span:nth-child(2){display:none}
   .drawer{position:fixed;right:0;top:0;bottom:0;z-index:10}
-  .row>.c-stat,.row>.c-time,.colhead>.c-stat,.colhead>.c-time,.row .sel{display:none}
+  .row>.c-stat,.row>.c-time,.colhead>.c-stat,.colhead>.c-time,.row .selbox{display:none}
   .bins{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
   .bin .lbl{font-size:11px;text-align:center;line-height:1.2}.bin .count{font-size:18px}
   .bin{grid-template-columns:1fr;grid-template-areas:"k" "l" "c";justify-items:center;padding:6px;gap:2px}
@@ -281,7 +286,7 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
 
 .cats-head{display:flex;align-items:baseline;gap:4px;margin:0 8px 6px 0}
 .cats-head h2{margin:0 auto 0 8px}
-.cats-head button{border:0;background:none;padding:2px 6px;border-radius:var(--r-s);font-size:12px;color:var(--muted)}
+.cats-head button{border:0;background:none;padding:2px 6px;min-height:24px;border-radius:var(--r-s);font-size:12px;color:var(--muted)}
 .cats-head button:hover:not(:disabled){color:var(--text);background:var(--raise)}
 .cats-head button:disabled{color:var(--faint);cursor:default}
 
@@ -290,9 +295,9 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
 .rate-row{display:flex;align-items:center;gap:12px}
 .rate-row .note{margin:0}
 .rate{display:inline-flex;flex-direction:row-reverse}
-.rate button{border:0;background:none;padding:0 2px;font-size:24px;line-height:1;color:var(--line);cursor:pointer}
+.rate button{border:0;background:none;padding:0 2px;font-size:24px;line-height:1;color:var(--faint);cursor:pointer}
 .rate button.on{color:var(--watch)}
-.rate:hover button{color:var(--line)}
+.rate:hover button{color:var(--faint)}
 .rate button:hover,.rate button:hover~button{color:var(--watch)}
 
 /* blur titles: everywhere, until Option/Alt is held down (body.peek) */
