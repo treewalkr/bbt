@@ -510,7 +510,7 @@ document.addEventListener("keydown", e => {
     if (e.key === "ArrowRight" || e.key === "l") { e.preventDefault(); stepViewer(1); }
     else if (e.key === "ArrowLeft" || e.key === "h") { e.preventDefault(); stepViewer(-1); }
     else if (e.key === "f") { e.preventDefault(); setFull(!V.full); }
-    else if (e.key === "Escape") { if (V.full) setFull(false); else closeViewer(); }
+    else if (e.key === "Escape") closeViewer();
     return;
   }
   if (e.target.matches?.("input[type=search],input[type=text],input[type=number],input[type=date],select")) { if (e.key === "Escape") e.target.blur(); return; }
