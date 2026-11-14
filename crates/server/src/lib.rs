@@ -1,5 +1,6 @@
-//! bbt server: tracker client, SQLite store and sync.
+//! bbt server: tracker client, SQLite store, sync and the local HTTP API.
 
+pub mod api;
 pub mod config;
 pub mod queries;
 pub mod store;

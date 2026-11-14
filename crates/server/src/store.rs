@@ -57,7 +57,7 @@ pub struct Store {
 }
 
 /// Summary of a finished sync run.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct SyncRun {
     pub started_at: i64,
     pub finished_at: Option<i64>,
