@@ -20,3 +20,6 @@
 .idea/
 .vscode/
 *.swp
+
+# Docker volume (database)
+/data/

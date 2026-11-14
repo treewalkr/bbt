@@ -1,0 +1,10 @@
+.git
+target
+data
+.prototypes
+.env
+.env.*
+*.db
+*.db-*
+*.torrent
+*.bundle

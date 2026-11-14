@@ -1,0 +1,15 @@
+services:
+  bbt:
+    build: .
+    image: bbt
+    init: true
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      BBT_DB: /data/bbt.db
+    ports:
+      # Loopback only: reachable from this machine, not from the network.
+      - "127.0.0.1:4781:4781"
+      - "[::1]:4781:4781"
+    volumes:
+      - ./data:/data

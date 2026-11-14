@@ -12,6 +12,17 @@ Downloaded) instead of browsing the same pages every day.
 
 The server only listens on the loopback addresses (127.0.0.1 and ::1).
 
+### With Docker
+
+1. Copy `.env.example` to `.env` and fill it in.
+2. `docker compose up -d --build`
+3. Open http://localhost:4781
+
+The database lives in `./data/bbt.db`. The port is published on the loopback
+addresses only, so other machines can't reach it. `docker compose logs -f` shows the
+log; `docker compose down` stops it. To run without Docker against the same database,
+set `BBT_DB=data/bbt.db` in `.env`.
+
 ## Keys
 
 `j`/`k` move, `1`–`4` sort, `0` back to New, `Shift 1` mark the whole day viewed,
