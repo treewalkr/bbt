@@ -24,7 +24,11 @@ function loadCats() {
   } catch { /* fall through */ }
   return new Set(Object.keys(CATS).map(Number));
 }
-const saveCats = () => localStorage.setItem("bbt_cats", JSON.stringify([...S.cats]));
+function saveCats() {
+  const categories = [...S.cats];
+  localStorage.setItem("bbt_cats", JSON.stringify(categories));
+  api("PUT", "/api/prefs", {categories}).catch(e => toast(`Couldn't save categories: ${e.message}`, false));
+}
 const S = {
   view:"new", cats:loadCats(), range:"last", from:"", sort:"new", q:"",
   grid:false, free:false, sticky:localStorage.getItem("bbt_sticky")==="1",
@@ -506,6 +510,16 @@ document.addEventListener("keydown", e => {
     sessionStorage.setItem("bbt_last_visit", lv);
   }
   S.lastVisit = lv ? Number(lv) : null;
+  // The database copy wins: it survives browser storage being cleared.
+  try {
+    const prefs = await api("GET", "/api/prefs");
+    if (Array.isArray(prefs.categories)) {
+      S.cats = new Set(prefs.categories.filter(c => c in CATS));
+      localStorage.setItem("bbt_cats", JSON.stringify([...S.cats]));
+    } else if (localStorage.getItem("bbt_cats")) {
+      saveCats(); // first run with server prefs: keep what this browser had
+    }
+  } catch { /* keep the local copy */ }
   await load();
   maybeSyncOnOpen();
 })();

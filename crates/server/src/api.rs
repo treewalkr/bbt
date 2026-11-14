@@ -49,6 +49,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/torrents", get(torrents))
         .route("/api/marks", post(set_marks))
         .route("/api/visit", post(visit))
+        .route("/api/prefs", get(get_prefs).put(put_prefs))
         .route("/api/sync", get(sync_status).post(run_sync))
         .route("/api/older", post(load_older))
         .route("/api/torrents/{id}/details", get(details))
@@ -84,21 +85,27 @@ impl From<anyhow::Error> for ApiError {
 
 type ApiResult<T> = Result<Json<T>, ApiError>;
 
-// The UI is embedded so the binary runs on its own.
-async fn index() -> Html<&'static str> {
-    Html(include_str!("../ui/index.html"))
+// The UI is embedded so the binary runs on its own. `no-cache` makes the browser
+// revalidate every load, so a rebuilt server is picked up on a plain refresh.
+const NO_CACHE: (header::HeaderName, &str) = (header::CACHE_CONTROL, "no-cache");
+
+async fn index() -> impl IntoResponse {
+    ([NO_CACHE], Html(include_str!("../ui/index.html")))
 }
 
 async fn style() -> impl IntoResponse {
     (
-        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+        [(header::CONTENT_TYPE, "text/css; charset=utf-8"), NO_CACHE],
         include_str!("../ui/style.css"),
     )
 }
 
 async fn script() -> impl IntoResponse {
     (
-        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        [
+            (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
+            NO_CACHE,
+        ],
         include_str!("../ui/app.js"),
     )
 }
@@ -211,6 +218,27 @@ async fn set_marks(
         .map(|(id, mark)| Previous { id, mark })
         .collect();
     Ok(Json(json!({ "previous": previous })))
+}
+
+/// UI preferences kept in the database so they survive browser storage being cleared.
+#[derive(Serialize, Deserialize, Default)]
+struct Prefs {
+    /// Selected category ids; `None` means never chosen (show all).
+    categories: Option<Vec<u16>>,
+}
+
+async fn get_prefs(State(s): State<Arc<AppState>>) -> ApiResult<Prefs> {
+    let raw = s.store.lock().await.get("prefs")?;
+    Ok(Json(
+        raw.and_then(|r| serde_json::from_str(&r).ok())
+            .unwrap_or_default(),
+    ))
+}
+
+async fn put_prefs(State(s): State<Arc<AppState>>, Json(p): Json<Prefs>) -> ApiResult<Prefs> {
+    let json = serde_json::to_string(&p).map_err(|e| anyhow::anyhow!(e))?;
+    s.store.lock().await.set("prefs", &json)?;
+    Ok(Json(p))
 }
 
 /// Record a visit and return the previous one, for "since last visit".
@@ -609,6 +637,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn saves_prefs() {
+        let (app, _dir) = app().await;
+        let (_, v) = call(&app, "GET", "/api/prefs", None).await;
+        assert_eq!(v, json!({"categories": null}));
+        let body = json!({"categories": [3, 5]});
+        let (st, _) = call(&app, "PUT", "/api/prefs", Some(body.clone())).await;
+        assert_eq!(st, StatusCode::OK);
+        let (_, v) = call(&app, "GET", "/api/prefs", None).await;
+        assert_eq!(v, body);
+    }
+
+    #[tokio::test]
     async fn visit_returns_previous_time() {
         let (app, _dir) = app().await;
         let (_, v) = call(&app, "POST", "/api/visit", None).await;
@@ -641,6 +681,7 @@ mod tests {
             let req = Request::builder().uri(path).body(Body::empty()).unwrap();
             let resp = app.clone().oneshot(req).await.unwrap();
             assert_eq!(resp.status(), StatusCode::OK, "{path}");
+            assert_eq!(resp.headers()[header::CACHE_CONTROL], "no-cache", "{path}");
         }
     }
 
