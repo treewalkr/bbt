@@ -25,8 +25,8 @@ set `BBT_DB=data/bbt.db` in `.env`.
 
 ## Keys
 
-`j`/`k` move, `1`–`4` sort, `0` back to New, `Shift 1` mark the whole day viewed,
-`Enter` details, `u` undo, `/` search, `?` all shortcuts.
+`j`/`k` move, `1`–`4` sort, `0` back to New, `Shift 1` mark the day's new torrents viewed (press twice above 20),
+`Enter` (or a second click) details, `u` undo, `/` search, `?` all shortcuts.
 
 ## Sync limits
 
