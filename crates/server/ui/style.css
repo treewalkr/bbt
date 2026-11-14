@@ -237,3 +237,9 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
 .lb-bar a:hover{color:var(--text)}
 .shots a{cursor:zoom-in}
 @media (max-width:760px){.lightbox{grid-template-columns:44px minmax(0,1fr) 44px}.lb-btn{width:38px;height:38px;font-size:22px}}
+
+.cats-head{display:flex;align-items:baseline;gap:4px;margin:0 8px 6px 0}
+.cats-head h2{margin:0 auto 0 8px}
+.cats-head button{border:0;background:none;padding:2px 6px;border-radius:var(--r-s);font-size:12px;color:var(--muted)}
+.cats-head button:hover:not(:disabled){color:var(--text);background:var(--raise)}
+.cats-head button:disabled{color:var(--faint);cursor:default}

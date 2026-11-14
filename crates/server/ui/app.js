@@ -17,8 +17,16 @@ const SITE = "https://tracker.example/";
 const DAY = 86400, ICT = 7 * 3600;
 
 /* ===== state ===== */
+function loadCats() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("bbt_cats"));
+    if (Array.isArray(saved)) return new Set(saved.map(Number).filter(c => c in CATS));
+  } catch { /* fall through */ }
+  return new Set(Object.keys(CATS).map(Number));
+}
+const saveCats = () => localStorage.setItem("bbt_cats", JSON.stringify([...S.cats]));
 const S = {
-  view:"new", cats:new Set(Object.keys(CATS).map(Number)), range:"last", from:"", sort:"new", q:"",
+  view:"new", cats:loadCats(), range:"last", from:"", sort:"new", q:"",
   grid:false, free:false, sticky:localStorage.getItem("bbt_sticky")==="1",
   items:[], summary:null, lastVisit:null, focus:null, sel:new Set(), undo:null, drawer:null,
   syncing:false, loadSeq:0,
@@ -144,7 +152,8 @@ function render() {
     const total = S.summary?.counts.total ?? 0;
     const label = VIEWS.find(v => v[0] === S.view)[1];
     let msg;
-    if (!total) msg = `<h3>No torrents yet</h3><p>Sync to fetch the latest uploads from tracker.</p><button data-act="sync">Sync now</button>`;
+    if (!S.cats.size) msg = `<h3>No categories selected</h3><p>Tick at least one category on the left to see torrents.</p><button data-act="allcats">Select all categories</button>`;
+    else if (!total) msg = `<h3>No torrents yet</h3><p>Sync to fetch the latest uploads from tracker.</p><button data-act="sync">Sync now</button>`;
     else if (S.view === "new") msg = `<h3>All caught up</h3><p>Nothing new ${S.range === "last" ? "since your last visit" : "in this date range"}${S.q || S.free ? " that matches your filters" : ""}. Sync to check tracker for new uploads.</p><button data-act="sync">Sync now</button>`;
     else msg = `<h3>Nothing in ${label}</h3><p>${MARKS[S.view] ? `Press ${MARKS[S.view].key} on a torrent to add it here.` : "Try a wider date range."}</p>`;
     main.innerHTML = `<div class="empty">${msg}</div>`;
@@ -176,7 +185,8 @@ function renderNav() {
   const n = k => !c ? "" : k === "new" ? c.new : k === "all" ? c.total : c[k];
   $("#views").innerHTML = "<h2>Lists</h2>" + VIEWS.map(([k, l, col]) => `<button data-view="${k}" aria-current="${S.view === k}" style="--c:${col}"><i class="dot"></i>${l}<span class="n">${n(k)}</span></button>`).join("");
   const byCat = c?.new_by_category ?? {};
-  $("#cats").innerHTML = "<h2>Categories</h2>" + Object.entries(CATS).map(([k, l]) => `<label><input type="checkbox" data-cat="${k}" ${S.cats.has(+k) ? "checked" : ""}><span>${l}</span><span class="n">${byCat[k] || ""}</span></label>`).join("");
+  const all = S.cats.size === Object.keys(CATS).length, none = S.cats.size === 0;
+  $("#cats").innerHTML = `<div class="cats-head"><h2>Categories</h2><button data-cats="all" ${all ? "disabled" : ""}>All</button><button data-cats="none" ${none ? "disabled" : ""}>None</button></div>` + Object.entries(CATS).map(([k, l]) => `<label><input type="checkbox" data-cat="${k}" ${S.cats.has(+k) ? "checked" : ""}><span>${l}</span><span class="n">${byCat[k] || ""}</span></label>`).join("");
 }
 function renderBins() {
   const c = S.summary?.counts ?? {};
@@ -410,6 +420,7 @@ async function maybeSyncOnOpen() {
 /* ===== events ===== */
 main.addEventListener("click", e => {
   if (e.target.closest("[data-act=sync]")) return doSync();
+  if (e.target.closest("[data-act=allcats]")) { S.cats = new Set(Object.keys(CATS).map(Number)); saveCats(); return load(); }
   if (e.target.closest("[data-act=older]")) { O.error = false; return loadOlder(); }
   if (e.target.closest("[data-bulk]")) return setMark([...e.target.closest(".group").querySelectorAll("[data-id]")].map(x => +x.dataset.id), "viewed");
   const r = e.target.closest("[data-id]"); if (!r) return;
@@ -427,7 +438,12 @@ $("#drawerIn").addEventListener("click", e => {
   if (e.target.closest("[data-act=download]")) return download(S.drawer);
 });
 $("#views").addEventListener("click", e => { const b = e.target.closest("[data-view]"); if (!b) return; S.view = b.dataset.view; S.focus = null; S.sel.clear(); main.scrollTop = 0; load(); });
-$("#cats").addEventListener("change", e => { const c = +e.target.dataset.cat; e.target.checked ? S.cats.add(c) : S.cats.delete(c); load(); });
+$("#cats").addEventListener("change", e => { const c = +e.target.dataset.cat; e.target.checked ? S.cats.add(c) : S.cats.delete(c); saveCats(); load(); });
+$("#cats").addEventListener("click", e => {
+  const b = e.target.closest("[data-cats]"); if (!b) return;
+  S.cats = b.dataset.cats === "all" ? new Set(Object.keys(CATS).map(Number)) : new Set();
+  saveCats(); load();
+});
 $("#range").onchange = e => { S.range = e.target.value; $("#customWrap").hidden = S.range !== "custom"; load(); };
 $("#from").onchange = e => { S.from = e.target.value; load(); };
 $("#sort").onchange = e => { S.sort = e.target.value; load(); };
