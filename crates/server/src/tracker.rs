@@ -1,4 +1,4 @@
-//! Minimal tracker.example HTTP client: login, cookies, polite pacing, Thai decoding.
+//! Minimal tracker HTTP client: login, cookies, polite pacing, Thai decoding.
 
 use bbt_domain::is_login_page;
 use rand::RngExt;
@@ -9,7 +9,6 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 use tokio::time::{Instant, sleep_until};
 
-pub const BASE_URL: &str = "https://tracker.example/";
 const UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 \
                   (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 /// Cookies that prove a logged-in session.
@@ -294,7 +293,13 @@ mod tests {
 
     #[test]
     fn round_trips_cookie_header() {
-        let c = Client::new(BASE_URL, "dev", Some("uid=1; pass=abc"), Duration::ZERO).unwrap();
+        let c = Client::new(
+            "https://example.org/",
+            "dev",
+            Some("uid=1; pass=abc"),
+            Duration::ZERO,
+        )
+        .unwrap();
         assert!(c.has_session());
         assert_eq!(c.cookie_header(), "did=dev; pass=abc; uid=1");
         assert_eq!(parse_cookie_header(&c.cookie_header()).len(), 3);
@@ -302,7 +307,7 @@ mod tests {
 
     #[test]
     fn no_session_without_uid_cookie() {
-        let c = Client::new(BASE_URL, "dev", None, Duration::ZERO).unwrap();
+        let c = Client::new("https://example.org/", "dev", None, Duration::ZERO).unwrap();
         assert!(!c.has_session());
     }
 

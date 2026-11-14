@@ -22,8 +22,7 @@ impl Config {
     pub fn from_env() -> Result<Self> {
         Ok(Self {
             db_path: std::env::var("BBT_DB").unwrap_or_else(|_| "bbt.db".into()),
-            base_url: std::env::var("TRACKER_BASE_URL")
-                .unwrap_or_else(|_| tracker::BASE_URL.into()),
+            base_url: required("TRACKER_BASE_URL")?,
             creds: Credentials {
                 username: required("TRACKER_USERNAME")?,
                 password: required("TRACKER_PASSWORD")?,

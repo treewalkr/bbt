@@ -1,6 +1,6 @@
 # bbt
 
-A local inbox for a private torrent tracker. It syncs the newest uploads into
+A local inbox for a private torrent tracker (set `TRACKER_BASE_URL` in `.env`). It syncs the newest uploads into
 SQLite so you can sort each torrent once (Viewed, View later, Download later,
 Downloaded) instead of browsing the same pages every day.
 

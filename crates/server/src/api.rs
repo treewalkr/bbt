@@ -127,6 +127,7 @@ async fn summary(
         "last_sync": store.last_sync()?,
         "last_visit": store.get("last_visit")?.and_then(|v| v.parse::<i64>().ok()),
         "coverage_from": coverage_from(&store)?,
+        "site": s.config.as_ref().map(|c| c.base_url.trim_end_matches('/').to_string() + "/"),
     })))
 }
 

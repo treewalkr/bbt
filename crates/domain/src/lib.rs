@@ -1,4 +1,4 @@
-//! Types and HTML parsing for tracker.example's torrent list (`browse.php`).
+//! Types and HTML parsing for the tracker's torrent list (`browse.php`).
 
 use chrono::{DateTime, FixedOffset, NaiveDateTime, TimeZone, Utc};
 use scraper::{ElementRef, Html, Selector};

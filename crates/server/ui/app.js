@@ -13,7 +13,6 @@ const VIEWS = [
   ["new","New","var(--new)"],["view_later","View later","var(--watch)"],["download_later","Download later","var(--get)"],
   ["downloaded","Downloaded","var(--got)"],["viewed","Viewed","#B7ABC4"],["all","Everything","var(--faint)"],
 ];
-const SITE = "https://tracker.example/";
 const DAY = 86400, ICT = 7 * 3600;
 
 /* ===== state ===== */
@@ -74,7 +73,8 @@ function fmtSize(b) {
 
 /* ===== text ===== */
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const clean = t => t.replace(/\s*@Tracker\s*$/i, "");
+const siteUrl = it => S.summary?.site ? `${S.summary.site}details.php?id=${it.id}&hash_id=${it.hash_id}` : null;
+const clean = t => t.replace(/\s*@[A-Za-z]+\s*$/, ""); // drop the site tag at the end
 const code = it => (it.title.match(/^[A-Z0-9]{2,}-\d+/) || [clean(it.title).split(/\s+/).slice(0, 3).join(" ")])[0];
 const grad = it => `linear-gradient(160deg,hsl(${HUE[it.category] ?? 0} 45% 38%),hsl(${((HUE[it.category] ?? 0) + 40) % 360} 35% 18%))`;
 function poster(it) {
@@ -226,7 +226,7 @@ function renderDrawer() {
   ${shots}
   <div class="rate-row"><div class="rate" role="group" aria-label="Your rating">${[5, 4, 3, 2, 1].map(n => `<button data-rate="${n}" class="${it.rating >= n ? "on" : ""}" aria-pressed="${it.rating === n}" aria-label="${n} star${n === 1 ? "" : "s"}">★</button>`).join("")}</div><span class="note">${it.rating ? `${it.rating} of 5. Click it again to clear.` : "Not rated. Press r then 1–5."}</span></div>
   <div class="states">${Object.entries(MARKS).map(([k, m]) => `<button data-set="${k}" style="--c:${m.c}" aria-pressed="${it.mark === k}">${m.label}</button>`).join("")}</div>
-  <div class="acts"><button class="primary" data-act="download" ${S.downloading ? "disabled" : ""}>${S.downloading ? "Downloading…" : "Download .torrent"}</button><a href="${SITE}details.php?id=${it.id}&hash_id=${it.hash_id}" target="_blank" rel="noreferrer">Open on tracker</a></div>
+  <div class="acts"><button class="primary" data-act="download" ${S.downloading ? "disabled" : ""}>${S.downloading ? "Downloading…" : "Download .torrent"}</button>${siteUrl(it) ? `<a href="${siteUrl(it)}" target="_blank" rel="noreferrer">Open on the tracker</a>` : ""}</div>
   <p class="note">Download fetches a fresh link from tracker and marks the torrent Downloaded.</p>`;
 }
 async function openDrawer(id) {
@@ -543,7 +543,7 @@ document.addEventListener("keydown", e => {
   else if (k === "x" && S.focus) { const id = S.focus; S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); const c = main.querySelector(`[data-id="${id}"] .sel`); if (c) c.checked = S.sel.has(id); renderTarget(); }
   else if (k === "Enter" && S.focus) openDrawer(S.focus);
   else if (k === "Escape") { closeDrawer(); if (S.sel.size) { S.sel.clear(); render(); } }
-  else if (k === "o" && S.focus) { const it = S.items.find(i => i.id === S.focus); if (it) window.open(`${SITE}details.php?id=${it.id}&hash_id=${it.hash_id}`, "_blank", "noreferrer"); }
+  else if (k === "o" && S.focus) { const it = S.items.find(i => i.id === S.focus); if (it && siteUrl(it)) window.open(siteUrl(it), "_blank", "noreferrer"); }
   else if (k === "u") undo();
   else if (k === "b") setBlur(!document.body.classList.contains("blur"));
   else if (k === "t") setHideTitles(!document.body.classList.contains("hide-titles"));
