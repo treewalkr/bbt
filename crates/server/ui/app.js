@@ -232,7 +232,7 @@ function renderTarget() {
   const t = $("#target"), it = flat.find(i => i.id === S.focus);
   const what = S.sel.size ? `${S.sel.size} selected` : it ? esc(code(it)) : "—";
   t.classList.toggle("rating", !!rateArmed);
-  t.innerHTML = rateArmed ? `Rate ${what}<b>1–5, or 0 to clear</b>` : blind() && flat.length ? `Applies to<b>Tap a torrent first</b>` : `Applies to<b>${what}</b>`;
+  t.innerHTML = rateArmed ? `${S.sel.size ? `Rate ${S.sel.size} selected` : "Rate it"}<b>1–5, or 0 to clear</b>` : blind() && flat.length ? `Applies to<b>Tap a torrent first</b>` : `Applies to<b>${what}</b>`;
 }
 function renderSyncText() {
   if (S.syncing) return;
