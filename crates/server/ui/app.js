@@ -152,15 +152,17 @@ function tags(it) {
 }
 const stateOf = it => it.mark ?? "new";
 const stateAttr = it => ({viewed:"viewed", view_later:"watch", download_later:"get", downloaded:"got", new:"new"})[stateOf(it)];
+// One number column, and it follows the sort: seeders by default, else what you sorted by.
+const STATS = {seed:["Seeds", "seeders"], leech:["Leech", "leechers"], snatch:["Snatched", "snatched"]};
+const stat = () => STATS[S.sort] ?? STATS.seed;
 function rowHTML(it, byDay) {
+  const [, key] = stat();
   return `<div class="row${S.focus === it.id ? " focus" : ""}" data-id="${it.id}" data-state="${stateAttr(it)}" role="option" aria-selected="${S.focus === it.id}">
   <i class="bar"></i><input class="sel" type="checkbox" aria-label="Select" ${S.sel.has(it.id) ? "checked" : ""}>
   ${poster(it)}
   <div class="meta"><div class="title" title="${esc(it.title)}">${esc(clean(it.title))}</div><div class="tags">${tags(it)}</div></div>
   <div class="num">${fmtSize(it.size_bytes)}<small>${it.files} file${it.files === 1 ? "" : "s"}</small></div>
-  <div class="num c-seed${it.seeders > 200 ? " hot" : ""}">${it.seeders}</div>
-  <div class="num c-leech">${it.leechers}</div>
-  <div class="num c-snatch">${it.snatched}</div>
+  <div class="num c-stat${key === "seeders" && it.seeders > 200 ? " hot" : ""}">${it[key]}</div>
   <div class="time c-time">${byDay ? fmtTime(it.uploaded_at) : fmtAgo(it.uploaded_at)}</div></div>`;
 }
 function cardHTML(it) {
@@ -182,13 +184,14 @@ function render() {
     if (catsOn() && !S.cats.size) msg = `<h3>No categories selected</h3><p>Tick at least one category on the left to see torrents.</p><button data-act="allcats">Select all categories</button>`;
     else if (S.q || S.free) msg = `<h3>No matches</h3><p>Nothing in ${label}${S.q ? ` matches “${esc(S.q)}”` : ""}${S.free ? `${S.q ? " and is" : " is"} free` : ""}${dated() ? ` ${rangeText()}` : ""}.</p><button data-act="clearfilters">Clear ${S.q && S.free ? "search and Free only" : S.q ? "search" : "Free only"}</button>`;
     else if (!total) msg = `<h3>No torrents yet</h3><p>Sync to fetch the latest uploads from tracker.</p><button data-act="sync">Sync now</button>`;
-    else if (S.view === "new") msg = `<h3>All caught up</h3><p>Nothing new ${rangeText()}. Sync to check the tracker for new uploads.</p><button data-act="sync">Sync now</button>`;
+    else if (S.view === "new") msg = `<h3>All caught up</h3>${tallyHTML()}<p>Nothing new ${rangeText()}. Sync to check the tracker for new uploads.</p><button data-act="sync">Sync now</button>`;
     else msg = `<h3>Nothing in ${label}</h3><p>${MARKS[S.view] ? `Press ${MARKS[S.view].key} on a torrent to add it here.` : "Try a wider date range."}</p>`;
     main.innerHTML = `<div class="empty">${msg}</div>`;
   } else {
     const total = S.summary?.counts.total ?? 0;
-    const head = S.grid ? "" : `<div class="colhead"><span></span><span></span><span></span><span class="l">${S.view === "all" && total > flat.length && flat.length < 5000 ? `${flat.length} uploaded ${rangeText()}, of ${total} in bbt` : plural(flat.length, "torrent") + (flat.length >= 5000 ? " (first 5000)" : "")}</span><span>Size</span><span class="c-seed">Seeds</span><span class="c-leech">Leech</span><span class="c-snatch">Snatched</span><span class="c-time">${byDay ? "Time" : "Age"}</span></div>`;
+    const head = S.grid ? "" : `<div class="colhead"><span></span><span></span><span></span><span class="l">${S.view === "all" && total > flat.length && flat.length < 5000 ? `${flat.length} uploaded ${rangeText()}, of ${total} in bbt` : plural(flat.length, "torrent") + (flat.length >= 5000 ? " (first 5000)" : "")}</span><span>Size</span><span class="c-stat">${stat()[0]}</span><span class="c-time">${byDay ? "Time" : "Age"}</span></div>`;
     main.classList.toggle("has-colhead", !S.grid);
+    main.classList.toggle("mixed", S.view === "all"); // the only list where states differ
     main.innerHTML = head + gs.map(g => {
       const nNew = g.items.filter(i => !i.mark).length;
       return `<section class="group" data-g="${g.key}"><div class="ghead"><h3>${esc(g.label)}</h3>
@@ -366,6 +369,22 @@ $("#lightbox").addEventListener("touchend", e => {
   if (Math.abs(dx) > 40) stepViewer(dx < 0 ? 1 : -1);
 });
 
+/* ===== session tally: what you sorted since opening bbt ===== */
+const tally = (() => { try { return JSON.parse(sessionStorage.getItem("bbt_tally")) ?? {}; } catch { return {}; } })();
+function count(mark, n) {
+  if (!mark) return;
+  tally[mark] = Math.max(0, (tally[mark] ?? 0) + n);
+  sessionStorage.setItem("bbt_tally", JSON.stringify(tally));
+}
+function tallyHTML() {
+  const done = Object.keys(MARKS).filter(k => tally[k]);
+  const sum = done.reduce((a, k) => a + tally[k], 0);
+  if (!sum) return "";
+  const words = {viewed:"viewed", view_later:"to view later", download_later:"to download", downloaded:"downloaded"};
+  const jump = tally.download_later ? `<button data-view="download_later" class="ghost">Open Download later</button>` : "";
+  return `<p class="tally">You sorted <b>${plural(sum, "torrent")}</b> this session: ${done.map(k => `<span style="color:${MARKS[k].c}">${tally[k]} ${words[k]}</span>`).join(", ")}.</p>${jump}`;
+}
+
 /* ===== marking ===== */
 let toastT;
 function toast(msg, undo = true) {
@@ -387,7 +406,8 @@ async function setMark(ids, mark, {advance = false} = {}) {
   let res;
   try { res = await api("POST", "/api/marks", {ids, mark}); }
   catch (e) { toast(`Couldn't save: ${e.message}`, false); return load(); }
-  S.undo = {kind: "mark", previous: res.previous};
+  S.undo = {kind: "mark", previous: res.previous, mark};
+  count(mark, ids.length);
   const nodes = leaving ? ids.map(id => main.querySelector(`[data-id="${id}"]`)).filter(Boolean) : [];
   const apply = () => {
     if (leaving) S.items = S.items.filter(i => !ids.includes(i.id));
@@ -401,7 +421,8 @@ async function setMark(ids, mark, {advance = false} = {}) {
 }
 async function undo() {
   if (!S.undo?.previous.length) return;
-  const {kind, previous: prev} = S.undo; S.undo = null;
+  const {kind, previous: prev, mark} = S.undo; S.undo = null;
+  if (kind === "mark") count(mark, -prev.length);
   const key = kind === "mark" ? "mark" : "stars";
   const byValue = new Map();
   for (const p of prev) { const k = p[key] ?? ""; if (!byValue.has(k)) byValue.set(k, []); byValue.get(k).push(p.id); }
@@ -552,6 +573,7 @@ async function maybeSyncOnOpen() {
 /* ===== events ===== */
 main.addEventListener("click", e => {
   if (e.target.closest("[data-act=sync]")) return doSync();
+  const jump = e.target.closest("[data-view]"); if (jump) return showView(jump.dataset.view);
   if (e.target.closest("[data-act=clearfilters]")) { S.q = ""; $("#q").value = ""; S.free = false; $("#freeOnly").checked = false; return load(); }
   if (e.target.closest("[data-act=allcats]")) { S.cats = new Set(Object.keys(CATS).map(Number)); saveCats(); return load(); }
   if (e.target.closest("[data-act=older]")) { O.error = false; return loadOlder(); }
@@ -575,16 +597,19 @@ $("#drawerIn").addEventListener("click", e => {
   if (e.target.closest("[data-act=close]")) return closeDrawer();
   if (e.target.closest("[data-act=download]")) return download(S.drawer);
 });
-$("#views").addEventListener("click", e => { const b = e.target.closest("[data-view]"); if (!b) return; S.view = b.dataset.view; S.focus = null; S.sel.clear(); main.scrollTop = 0; load(); });
+function showView(v) { S.view = v; S.focus = null; S.sel.clear(); main.scrollTop = 0; load(); }
+$("#views").addEventListener("click", e => { const b = e.target.closest("[data-view]"); if (b) showView(b.dataset.view); });
 $("#cats").addEventListener("change", e => { const c = +e.target.dataset.cat; e.target.checked ? S.cats.add(c) : S.cats.delete(c); saveCats(); load(); });
 $("#cats").addEventListener("click", e => {
   const b = e.target.closest("[data-cats]"); if (!b) return;
   S.cats = b.dataset.cats === "all" ? new Set(Object.keys(CATS).map(Number)) : new Set();
   saveCats(); load();
 });
-$("#range").onchange = e => { S.range = e.target.value; $("#customWrap").hidden = S.range !== "custom"; load(); };
-$("#from").onchange = e => { S.from = e.target.value; load(); };
-$("#sort").onchange = e => { S.sort = e.target.value; load(); };
+// Sort, range and layout survive a reload.
+const keep = (k, v) => localStorage.setItem(k, v);
+$("#range").onchange = e => { S.range = e.target.value; keep("bbt_range", S.range); $("#customWrap").hidden = S.range !== "custom"; load(); };
+$("#from").onchange = e => { S.from = e.target.value; keep("bbt_from", S.from); load(); };
+$("#sort").onchange = e => { S.sort = e.target.value; keep("bbt_sort", S.sort); load().then(scrollFocus); };
 let qT; $("#q").oninput = e => { clearTimeout(qT); qT = setTimeout(() => { S.q = e.target.value.trim(); load(); }, 250); };
 $("#freeOnly").onchange = e => { S.free = e.target.checked; load(); };
 const setBlur = on => {
@@ -599,8 +624,12 @@ const peek = on => document.body.classList.toggle("peek", on);
 addEventListener("keydown", e => { if (e.key === "Alt") peek(true); });
 addEventListener("keyup", e => { if (e.key === "Alt") peek(false); });
 addEventListener("blur", () => peek(false));
-$("#vList").onclick = () => { S.grid = false; $("#vList").ariaPressed = "true"; $("#vGrid").ariaPressed = "false"; render(); };
-$("#vGrid").onclick = () => { S.grid = true; $("#vGrid").ariaPressed = "true"; $("#vList").ariaPressed = "false"; render(); };
+function setGrid(on) {
+  S.grid = on; keep("bbt_grid", on ? "1" : "0");
+  $("#vGrid").ariaPressed = String(on); $("#vList").ariaPressed = String(!on);
+}
+$("#vList").onclick = () => { setGrid(false); render(); scrollFocus(); };
+$("#vGrid").onclick = () => { setGrid(true); render(); scrollFocus(); };
 $("#syncBtn").onclick = doSync;
 $("#helpBtn").onclick = () => $("#help").showModal();
 $("#setBtn").onclick = () => $("#settings").showModal();
@@ -656,8 +685,13 @@ document.addEventListener("keydown", e => {
   $("#sBlur").checked = localStorage.getItem("bbt_blur") !== "0";
   setHideTitles(localStorage.getItem("bbt_hide_titles") === "1");
   $("#sHide").checked = localStorage.getItem("bbt_hide_titles") === "1";
-  $("#from").value = dayKey(nowSec() - 2 * DAY);
   $("#from").max = dayKey(nowSec());
+  const sort = localStorage.getItem("bbt_sort"), range = localStorage.getItem("bbt_range");
+  if (sort && $(`#sort option[value="${sort}"]`)) S.sort = $("#sort").value = sort;
+  if (range && $(`#range option[value="${range}"]`)) S.range = $("#range").value = range;
+  S.from = $("#from").value = localStorage.getItem("bbt_from") || dayKey(nowSec() - 2 * DAY);
+  $("#customWrap").hidden = S.range !== "custom";
+  setGrid(localStorage.getItem("bbt_grid") === "1");
   // "Since last visit" = the visit before this browser session, so reloads don't reset it.
   let lv = sessionStorage.getItem("bbt_last_visit");
   if (lv === null) {
