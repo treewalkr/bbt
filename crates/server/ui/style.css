@@ -1,7 +1,7 @@
 :root{
   --ink:#1B1622; --panel:#251E2E; --raise:#2F2639; --line:#3A3046;
   --text:#EEE7F3; --muted:#A79BB4; --faint:#8E839B; /* faint: 4.5:1 on panel, 5:1 on ink */
-  --new:#E2557A; --viewed:#7D7290; --watch:#E8B04B; --get:#4FB3A9; --got:#8BC66E;
+  --new:#E2557A; --viewed:#B7ABC4; --watch:#E8B04B; --get:#4FB3A9; --got:#8BC66E;
   --focus:#F2D3E0;
   --r-s:4px; --r-m:8px;
   --row:76px;
@@ -155,14 +155,14 @@ body:has(.drawer.open) .bin .count{font-size:18px}
 .bin .count{font-family:"Bricolage Grotesque";font-size:22px;font-weight:700;color:var(--c)}
 .bin.bump .count{animation:bump .35s ease}
 @keyframes bump{40%{transform:translateY(-4px) scale(1.15)}}
-.bin[data-s=viewed]{--c:#B7ABC4}.bin[data-s=watch]{--c:var(--watch)}.bin[data-s=get]{--c:var(--get)}.bin[data-s=got]{--c:var(--got)}
+.bin[data-s=viewed]{--c:var(--viewed)}.bin[data-s=watch]{--c:var(--watch)}.bin[data-s=get]{--c:var(--get)}.bin[data-s=got]{--c:var(--got)}
 
 /* ---------- drawer ---------- */
 .drawer{grid-area:drawer;width:0;overflow:hidden;background:var(--panel);border-left:1px solid var(--line);transition:width .2s ease}
 .drawer.open{width:380px}
 .drawer .in{width:380px;height:100%;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:14px}
 .drawer header{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted)}
-.drawer .close{border:0;background:none;font-size:20px;line-height:1;color:var(--muted);width:44px;height:44px;margin:-12px -12px -12px 0;border-radius:var(--r-s)}
+.drawer .close{border:0;background:none;display:grid;place-items:center;color:var(--muted);width:44px;height:44px;margin:-12px -12px -12px 0;border-radius:var(--r-s)}
 .drawer .close:hover{color:var(--text);background:var(--raise)}
 .drawer .big{display:grid;grid-template-columns:120px 1fr;gap:14px}
 .drawer .big .poster{width:120px;height:168px;font-size:12px;padding:8px}
@@ -171,17 +171,16 @@ body:has(.drawer.open) .bin .count{font-size:18px}
 .drawer dt{color:var(--muted)}
 .drawer dd{margin:0;text-align:right}
 .shots{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
-.shots div{aspect-ratio:16/10;border-radius:var(--r-s);background:var(--g);filter:saturate(.5)}
-.blur .shots div{filter:blur(3px) saturate(.4)}
 .drawer .acts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .drawer .acts button,.drawer .acts a{border:1px solid var(--line);background:var(--raise);border-radius:var(--r-s);padding:8px 10px;font-size:13px;text-align:center;color:var(--text);text-decoration:none}
 .drawer .acts .primary{background:var(--text);color:var(--ink);border-color:var(--text);font-weight:600}
-.drawer .states{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
-.drawer .states button{border:1px solid var(--line);background:none;border-radius:var(--r-s);padding:6px 4px;font-size:12px;color:var(--muted)}
+.drawer .states{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.drawer .states button{border:1px solid var(--line);background:none;border-radius:var(--r-s);padding:6px 4px;font-size:12px;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.25}
+.drawer .states kbd{font:600 11px "IBM Plex Sans Thai";color:var(--faint)}
+.drawer .states button[aria-pressed=true] kbd{color:inherit}
 .drawer .states button[aria-pressed=true]{color:var(--ink);background:var(--c);border-color:var(--c);font-weight:600}
 .drawer .note{font-size:12px;color:var(--faint)}
 .drawer .note.fetching{color:var(--watch)}
-.history{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:3px}
 
 /* ---------- toast / dialogs ---------- */
 .toast{position:fixed;left:50%;bottom:92px;transform:translate(-50%,20px);opacity:0;background:var(--text);color:var(--ink);padding:9px 14px;border-radius:var(--r-m);font-size:13px;display:flex;gap:14px;align-items:center;transition:.2s;pointer-events:none;z-index:20}
@@ -201,8 +200,6 @@ dialog h4{margin:18px 0 8px;font-size:13px;color:var(--muted);font-weight:500}
 .set{display:grid;grid-template-columns:1fr auto;gap:10px 16px;align-items:center;font-size:13px}
 .set .hint{grid-column:1/-1;margin-top:-6px;font-size:12px;color:var(--faint)}
 .set input[type=checkbox]{justify-self:end;width:16px;height:16px;accent-color:var(--new)}
-.set input[type=number],.set input[type=text]{width:120px;background:var(--ink);border:1px solid var(--line);border-radius:4px;padding:4px 8px}
-.ok{color:var(--got)}
 dialog .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 dialog .foot button{border:1px solid var(--line);background:var(--raise);border-radius:var(--r-s);padding:6px 14px}
 
@@ -275,12 +272,12 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
 .lightbox.full .lb-btn{z-index:1}
 .lb-size{border:0;background:none;color:var(--muted);font:inherit;padding:0;text-decoration:underline;cursor:pointer}
 .lb-size:hover,.lb-size[aria-pressed=true]{color:var(--text)}
-.lb-btn{border:0;background:rgba(255,255,255,.08);color:var(--text);width:48px;height:48px;border-radius:50%;font-size:28px;line-height:1;display:grid;place-items:center}
+.lb-btn{border:0;background:rgba(255,255,255,.08);color:var(--text);width:48px;height:48px;border-radius:50%;display:grid;place-items:center}
 .lb-btn:hover{background:rgba(255,255,255,.18)}
 .lb-btn[hidden]{display:none}
 .lb-prev{grid-column:1;grid-row:1}
 .lb-next{grid-column:3;grid-row:1}
-.lb-close{position:absolute;top:14px;right:14px;font-size:24px}
+.lb-close{position:absolute;top:14px;right:14px}
 .lb-bar{grid-column:1/-1;grid-row:2;display:flex;gap:18px;padding:12px 0 18px;font-size:13px;color:var(--muted)}
 .lb-bar a{color:var(--muted)}
 .lb-bar a:hover{color:var(--text)}
@@ -313,3 +310,6 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
 .target.rating{color:var(--watch)}
 .target.rating b{color:var(--watch)}
 .mbtn .dot{width:8px;height:8px;border-radius:50%;margin-right:8px;flex:none}
+.ico{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;display:block}
+.lb-btn .ico{width:22px;height:22px}
+#setBtn{display:grid;place-items:center;padding:6px 8px}

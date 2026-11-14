@@ -21,7 +21,7 @@
     <div class="prog" hidden id="syncProg"><i></i></div>
     <div style="display:flex;gap:6px">
       <button id="syncBtn" style="flex:1">Sync now</button>
-      <button id="setBtn" aria-label="Settings" title="Settings">⚙</button>
+      <button id="setBtn" aria-label="Settings" title="Settings"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
     </div>
   </div>
 </aside>
@@ -71,10 +71,10 @@
 <aside class="drawer" id="drawer" aria-label="Details"><div class="in" id="drawerIn"></div></aside>
 
 <div class="lightbox" id="lightbox" hidden role="dialog" aria-modal="true" aria-label="Screenshot viewer">
-  <button class="lb-btn lb-close" data-lb="close" aria-label="Close viewer">×</button>
-  <button class="lb-btn lb-prev" data-lb="prev" aria-label="Previous image">‹</button>
+  <button class="lb-btn lb-close" data-lb="close" aria-label="Close viewer"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  <button class="lb-btn lb-prev" data-lb="prev" aria-label="Previous image"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
   <div class="lb-stage" id="lbStage"><img id="lbImg" alt="" referrerpolicy="no-referrer" title="Click for full size (f)"></div>
-  <button class="lb-btn lb-next" data-lb="next" aria-label="Next image">›</button>
+  <button class="lb-btn lb-next" data-lb="next" aria-label="Next image"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
   <div class="lb-bar"><span id="lbCount"></span><button class="lb-size" data-lb="reveal" id="lbReveal" hidden>Show image (v)</button><button class="lb-size" data-lb="size" id="lbSize" aria-pressed="false">Full size</button><a id="lbOpen" target="_blank" rel="noreferrer">Open original</a></div>
 </div>
 

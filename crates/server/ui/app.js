@@ -11,14 +11,14 @@ function setCats(list) {
   $("#cats").hidden = !catsOn();
 }
 const MARKS = {
-  viewed:         {label:"Viewed",         key:"1", c:"#B7ABC4",        hint:"Seen it, skip next time"},
+  viewed:         {label:"Viewed",         key:"1", c:"var(--viewed)",        hint:"Seen it, skip next time"},
   view_later:     {label:"View later",     key:"2", c:"var(--watch)",   hint:"Look at it properly later"},
   download_later: {label:"Download later", key:"3", c:"var(--get)",     hint:"Grab the .torrent later"},
   downloaded:     {label:"Downloaded",     key:"4", c:"var(--got)",     hint:"Already have it"},
 };
 const VIEWS = [
   ["new","New","var(--new)"],["view_later","View later","var(--watch)"],["download_later","Download later","var(--get)"],
-  ["downloaded","Downloaded","var(--got)"],["viewed","Viewed","#B7ABC4"],["all","Everything","var(--faint)"],
+  ["downloaded","Downloaded","var(--got)"],["viewed","Viewed","var(--viewed)"],["all","Everything","var(--faint)"],
 ];
 const DAY = 86400, ICT = 7 * 3600;
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -262,13 +262,13 @@ function renderDrawer() {
     : d.error ? `<p class="err" title="${esc(d.error)}">Couldn't get screenshots from the tracker${/disabled/.test(d.error) ? " because tracker access is off (check .env)" : /not in the database/.test(d.error) ? " because this torrent is no longer in bbt" : ""}. <button class="linkbtn" data-act="retry">Try again</button></p>`
     : d.images.length ? `<div class="shots">${d.images.map((u, i) => `<a href="${esc(u)}" data-shot="${i}" aria-label="View screenshot ${i + 1} of ${d.images.length}"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`).join("")}</div>`
     : `<p class="note">No screenshots on tracker for this torrent.</p>`;
-  $("#drawerIn").innerHTML = `<header><span>${catsOn() ? esc(CATS[it.category] ?? `Category ${it.category}`) + " " : ""}<span style="color:var(--faint)">#${it.id}</span></span><button class="close" aria-label="Close details" data-act="close">×</button></header>
+  $("#drawerIn").innerHTML = `<header><span>${catsOn() ? esc(CATS[it.category] ?? `Category ${it.category}`) + " " : ""}<span style="color:var(--faint)">#${it.id}</span></span><button class="close" aria-label="Close details" data-act="close"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
   <div class="big">${poster(it)}<div style="display:flex;flex-direction:column;gap:10px"><h4 tabindex="-1">${esc(clean(it.title))}</h4>
   <dl><dt>Uploaded</dt><dd>${fmtWhen(it.uploaded_at)}</dd><dt>By</dt><dd>${esc(it.uploader ?? "Anonymous")}</dd><dt>Size</dt><dd>${fmtSize(it.size_bytes)}, ${it.files} file${it.files === 1 ? "" : "s"}</dd></dl></div></div>
   <dl><dt>Seeding</dt><dd>${it.seeders}</dd><dt>Leeching</dt><dd>${it.leechers}</dd><dt>Snatched</dt><dd>${it.snatched}</dd><dt>Free download</dt><dd>${it.free ? esc(it.free) : "No"}</dd><dt>Counts updated</dt><dd>${fmtAgo(it.stats_at)}</dd></dl>
   ${shots}
   <div class="rate-row"><div class="rate" role="group" aria-label="Your rating">${[5, 4, 3, 2, 1].map(n => `<button data-rate="${n}" class="${it.rating >= n ? "on" : ""}" aria-pressed="${it.rating === n}" aria-label="${n} star${n === 1 ? "" : "s"}">★</button>`).join("")}</div><span class="note">${it.rating ? `${it.rating} of 5. ${touch() ? "Tap" : "Click"} it again to clear.` : touch() ? "Not rated." : "Not rated. Press r then 1–5."}</span></div>
-  <div class="states">${Object.entries(MARKS).map(([k, m]) => `<button data-set="${k}" style="--c:${m.c}" aria-pressed="${it.mark === k}">${m.label}</button>`).join("")}</div>
+  <div class="states" role="group" aria-label="Sort into">${[["", {label:"New", key:"0", c:"var(--new)"}], ...Object.entries(MARKS)].map(([k, m]) => `<button data-set="${k}" style="--c:${m.c}" aria-pressed="${(it.mark ?? "") === k}"><kbd>${m.key}</kbd>${m.label}</button>`).join("")}</div>
   <div class="acts"><button class="primary" data-act="download" ${S.downloading ? "disabled" : ""}>${S.downloading ? "Downloading…" : "Download .torrent"}</button>${siteUrl(it) ? `<a href="${siteUrl(it)}" target="_blank" rel="noreferrer">Open on the tracker</a>` : ""}</div>
   <p class="note">Download fetches a fresh link from tracker and marks the torrent Downloaded.</p>`;
 }
@@ -610,7 +610,7 @@ $("#drawerIn").addEventListener("click", e => {
   if (star) { const it = S.items.find(i => i.id === S.drawer); const n = +star.dataset.rate; return setRating([S.drawer], it?.rating === n ? null : n); }
   const shot = e.target.closest("[data-shot]");
   if (shot) { e.preventDefault(); return openViewer(detailsCache.get(S.drawer)?.images ?? [], +shot.dataset.shot); }
-  const b = e.target.closest("[data-set]"); if (b) return setMark([S.drawer], b.dataset.set);
+  const b = e.target.closest("[data-set]"); if (b) return setMark([S.drawer], b.dataset.set || null);
   if (e.target.closest("[data-act=close]")) return closeDrawer();
   if (e.target.closest("[data-act=retry]")) { detailsCache.delete(S.drawer); return openDrawer(S.drawer); }
   if (e.target.closest("[data-act=download]")) return download(S.drawer);
