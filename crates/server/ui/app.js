@@ -504,7 +504,7 @@ async function doSync() {
   text.textContent = msg;
 }
 async function maybeSyncOnOpen() {
-  if (localStorage.getItem("bbt_sync_on_open") === "0") return;
+  if (localStorage.getItem("bbt_sync_on_open") !== "1") return; // off unless turned on
   try {
     const st = await api("GET", "/api/sync");
     const stale = !st.last_sync || nowSec() - st.last_sync.finished_at > 3600;
@@ -610,7 +610,7 @@ document.addEventListener("keydown", e => {
 /* ===== boot ===== */
 (async function boot() {
   setBlur(localStorage.getItem("bbt_blur") !== "0");
-  $("#sOpen").checked = localStorage.getItem("bbt_sync_on_open") !== "0";
+  $("#sOpen").checked = localStorage.getItem("bbt_sync_on_open") === "1";
   $("#sSticky").checked = S.sticky;
   $("#sBlur").checked = localStorage.getItem("bbt_blur") !== "0";
   setHideTitles(localStorage.getItem("bbt_hide_titles") === "1");
