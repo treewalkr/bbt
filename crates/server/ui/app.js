@@ -696,6 +696,13 @@ document.addEventListener("keydown", e => {
   if (viewerOpen()) {
     if (k === "ArrowRight" || hit("lbNext", e)) { e.preventDefault(); stepViewer(1); }
     else if (k === "ArrowLeft" || hit("lbPrev", e)) { e.preventDefault(); stepViewer(-1); }
+    // Up and down (j/k or the arrows): scroll a full-size image, otherwise go to the next or previous one.
+    else if (k === "ArrowDown" || k === "ArrowUp" || hit("next", e) || hit("prev", e)) {
+      e.preventDefault();
+      const d = k === "ArrowDown" || hit("next", e) ? 1 : -1, st = $("#lbStage");
+      if (V.full && st.scrollHeight > st.clientHeight) st.scrollBy({top: d * st.clientHeight * 0.4, behavior: "smooth"});
+      else stepViewer(d);
+    }
     else if (hit("lbFull", e)) { e.preventDefault(); setFull(!V.full); }
     else if (hit("lbReveal", e)) { e.preventDefault(); revealShots(true); }
     else if (k === "Escape") closeViewer();
@@ -752,6 +759,7 @@ function renderKeys() {
     b.setAttribute("aria-label", `${ACTION_NAMES[a]}: ${keyOf(a)}${changed ? ` (default ${keyName(KEY_DEFAULTS[a])})` : ""}. Press to change.`);
     b.title = changed ? `Default: ${keyName(KEY_DEFAULTS[a])}` : "Click to change";
   }
+  $("#kbViewerJK").textContent = `${keyOf("next")} ${keyOf("prev")}`;
   $("#kbReset").disabled = Object.entries(KEYS).every(([a, k]) => k === KEY_DEFAULTS[a]);
   $("#q").placeholder = `Search titles or uploaders  ( ${keyOf("search")} )`;
   $("#helpBtn").title = `Keyboard shortcuts (${keyOf("help")})`;
