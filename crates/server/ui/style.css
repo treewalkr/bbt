@@ -219,3 +219,5 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
 .drawer .err{color:#F3A3B6;font-size:12px}
 .muted{color:var(--muted)}
 .coverage{margin:0;padding:18px 20px 28px;font-size:13px;color:var(--muted);max-width:70ch}
+.older{display:flex;align-items:center;gap:14px;padding:18px 20px 28px;font-size:13px;color:var(--muted)}
+.older button{border:1px solid var(--line);background:var(--raise);border-radius:var(--r-s);padding:5px 12px}

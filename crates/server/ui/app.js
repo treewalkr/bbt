@@ -72,7 +72,7 @@ function poster(it) {
 
 /* ===== loading ===== */
 function listQuery() {
-  const p = new URLSearchParams({view: S.view, sort: S.sort, limit: "2000"});
+  const p = new URLSearchParams({view: S.view, sort: S.sort, limit: "5000"});
   if (S.view === "new" || S.view === "all") p.set("from", cutoff());
   if (S.cats.size !== Object.keys(CATS).length) p.set("cats", [...S.cats].join(",") || "0");
   if (S.q) p.set("q", S.q);
@@ -149,7 +149,7 @@ function render() {
     else msg = `<h3>Nothing in ${label}</h3><p>${MARKS[S.view] ? `Press ${MARKS[S.view].key} on a torrent to add it here.` : "Try a wider date range."}</p>`;
     main.innerHTML = `<div class="empty">${msg}</div>`;
   } else {
-    const head = S.grid ? "" : `<div class="colhead"><span></span><span></span><span></span><span class="l">${flat.length} torrents${flat.length >= 2000 ? " (first 2000)" : ""}</span><span>Size</span><span class="c-seed">Seeds</span><span class="c-leech">Leech</span><span class="c-snatch">Snatched</span><span class="c-time">${byDay ? "Time" : "Age"}</span></div>`;
+    const head = S.grid ? "" : `<div class="colhead"><span></span><span></span><span></span><span class="l">${flat.length} torrents${flat.length >= 5000 ? " (first 5000)" : ""}</span><span>Size</span><span class="c-seed">Seeds</span><span class="c-leech">Leech</span><span class="c-snatch">Snatched</span><span class="c-time">${byDay ? "Time" : "Age"}</span></div>`;
     main.classList.toggle("has-colhead", !S.grid);
     main.innerHTML = head + gs.map(g => {
       const nNew = g.items.filter(i => !i.mark).length;
@@ -161,7 +161,10 @@ function render() {
     }).join("");
   }
   const oldest = S.summary?.counts.oldest_uploaded_at;
-  if (oldest && (S.view === "new" || S.view === "all") && cutoff() < oldest - 3600) {
+  if (S.view === "all" && S.sort === "new" && S.summary?.counts.total) {
+    main.insertAdjacentHTML("beforeend", olderHTML());
+    const el = $("#older"); if (el) olderObserver.observe(el);
+  } else if (oldest && S.view === "new" && cutoff() < oldest - 3600) {
     main.insertAdjacentHTML("beforeend", `<p class="coverage">bbt has uploads back to ${fmtWhen(oldest)}. Earlier ones were never synced, so this list can't go further back. Each sync adds from where the last one stopped.</p>`);
   }
   if (keepBanner) main.prepend(keepBanner);
@@ -308,6 +311,39 @@ function groupIds(id) {
   return g ? [...g.querySelectorAll("[data-id]")].map(e => +e.dataset.id) : [];
 }
 
+/* ===== older pages (Everything, scroll to the end) ===== */
+const O = {busy:false, msg:"", budgetLeft:null, error:false};
+function olderBlocked() {
+  const oldest = S.summary?.counts.oldest_uploaded_at;
+  if (oldest && oldest <= cutoff()) return `Reached the start of your From date (${fmtWhen(cutoff())}). Pick an earlier date to load more.`;
+  if (O.budgetLeft === 0) return "Daily limit reached: 40 tracker pages. More tomorrow.";
+  return null;
+}
+function olderHTML() {
+  const blocked = olderBlocked();
+  const text = O.busy ? "Loading one older page from tracker…" : S.syncing ? "Waiting for the sync to finish…" : blocked ?? (O.msg || "Scroll here to load older uploads, one tracker page at a time.");
+  const btn = !O.busy && !S.syncing && !blocked ? `<button data-act="older">Load older</button>` : "";
+  return `<div class="older" id="older" aria-live="polite"><span>${esc(text)}</span>${btn}</div>`;
+}
+const olderObserver = new IntersectionObserver(entries => {
+  if (entries.some(e => e.isIntersecting) && !O.error) loadOlder();
+}, {root: main, rootMargin: "200px"});
+async function loadOlder() {
+  if (O.busy || S.syncing || olderBlocked()) return;
+  O.busy = true; O.error = false;
+  const el = $("#older"); if (el) el.outerHTML = olderHTML();
+  try {
+    const r = await api("POST", "/api/older");
+    O.budgetLeft = r.budget_left;
+    if (r.status === "done") O.msg = `Read tracker page ${r.page + 1}: ${r.added} older upload${r.added === 1 ? "" : "s"} added. ${r.budget_left} page${r.budget_left === 1 ? "" : "s"} left today.`;
+  } catch (e) {
+    O.msg = `Couldn't load older uploads: ${e.message}`; O.error = true;
+  } finally {
+    O.busy = false;
+  }
+  await load();
+}
+
 /* ===== sync ===== */
 async function doSync() {
   if (S.syncing) return;
@@ -315,6 +351,7 @@ async function doSync() {
   const prog = $("#syncProg"), text = $("#syncText"), btn = $("#syncBtn");
   prog.hidden = false; prog.classList.add("busy"); btn.disabled = true;
   text.textContent = "Syncing: reading up to 12 pages, about 40 seconds…";
+  const older = $("#older"); if (older) older.outerHTML = olderHTML();
   let msg;
   try {
     const r = await api("POST", "/api/sync");
@@ -341,6 +378,7 @@ async function maybeSyncOnOpen() {
 /* ===== events ===== */
 main.addEventListener("click", e => {
   if (e.target.closest("[data-act=sync]")) return doSync();
+  if (e.target.closest("[data-act=older]")) { O.error = false; return loadOlder(); }
   if (e.target.closest("[data-bulk]")) return setMark([...e.target.closest(".group").querySelectorAll("[data-id]")].map(x => +x.dataset.id), "viewed");
   const r = e.target.closest("[data-id]"); if (!r) return;
   const id = +r.dataset.id;
