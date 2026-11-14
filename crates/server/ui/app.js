@@ -189,7 +189,7 @@ function render() {
     main.innerHTML = `<div class="empty">${msg}</div>`;
   } else {
     const total = S.summary?.counts.total ?? 0;
-    const head = S.grid ? "" : `<div class="colhead"><span></span><span></span><span></span><span class="l">${S.view === "all" && total > flat.length && flat.length < 5000 ? `${flat.length} uploaded ${rangeText()}, of ${total} in bbt` : plural(flat.length, "torrent") + (flat.length >= 5000 ? " (first 5000)" : "")}</span><span>Size</span><span class="c-stat">${stat()[0]}</span><span class="c-time">${byDay ? "Time" : "Age"}</span></div>`;
+    const head = S.grid ? "" : `<div class="colhead"><span></span><span></span><span></span><span class="l">${S.view === "all" && total > flat.length && flat.length < 5000 ? `Title · ${flat.length} uploaded ${rangeText()}, of ${total} in bbt` : flat.length >= 5000 ? "Title · first 5000 shown" : "Title"}</span><span>Size</span><span class="c-stat">${stat()[0]}</span><span class="c-time">${byDay ? "Time" : "Age"}</span></div>`;
     main.classList.toggle("has-colhead", !S.grid);
     main.classList.toggle("mixed", S.view === "all"); // the only list where states differ
     main.innerHTML = head + gs.map(g => {
