@@ -62,6 +62,15 @@ CREATE TABLE details (
 );
 ";
 
+/// The user's 1–5 star rating, separate from marks. No row means unrated.
+const SCHEMA_V3: &str = "
+CREATE TABLE ratings (
+    torrent_id INTEGER PRIMARY KEY REFERENCES torrents(id),
+    stars      INTEGER NOT NULL CHECK (stars BETWEEN 1 AND 5),
+    updated_at INTEGER NOT NULL
+);
+";
+
 pub struct Store {
     pub(crate) conn: Connection,
 }
@@ -96,6 +105,10 @@ impl Store {
         if version < 2 {
             conn.execute_batch(SCHEMA_V2)?;
             conn.pragma_update(None, "user_version", 2)?;
+        }
+        if version < 3 {
+            conn.execute_batch(SCHEMA_V3)?;
+            conn.pragma_update(None, "user_version", 3)?;
         }
         Ok(Self { conn })
     }

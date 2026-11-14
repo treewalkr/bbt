@@ -48,6 +48,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/summary", get(summary))
         .route("/api/torrents", get(torrents))
         .route("/api/marks", post(set_marks))
+        .route("/api/ratings", post(set_ratings))
         .route("/api/visit", post(visit))
         .route("/api/prefs", get(get_prefs).put(put_prefs))
         .route("/api/sync", get(sync_status).post(run_sync))
@@ -239,6 +240,39 @@ async fn put_prefs(State(s): State<Arc<AppState>>, Json(p): Json<Prefs>) -> ApiR
     let json = serde_json::to_string(&p).map_err(|e| anyhow::anyhow!(e))?;
     s.store.lock().await.set("prefs", &json)?;
     Ok(Json(p))
+}
+
+#[derive(Deserialize)]
+struct RatingsBody {
+    ids: Vec<u64>,
+    /// 1–5, or `null` to clear.
+    stars: Option<u8>,
+}
+
+async fn set_ratings(
+    State(s): State<Arc<AppState>>,
+    Json(body): Json<RatingsBody>,
+) -> ApiResult<Value> {
+    if body.ids.is_empty() {
+        return Err(ApiError::bad_request("ids is empty"));
+    }
+    if let Some(n) = body.stars
+        && !(1..=5).contains(&n)
+    {
+        return Err(ApiError::bad_request(format!(
+            "stars must be 1 to 5, got {n}"
+        )));
+    }
+    let now = chrono::Utc::now().timestamp();
+    let previous: Vec<Value> = s
+        .store
+        .lock()
+        .await
+        .set_ratings(&body.ids, body.stars, now)?
+        .into_iter()
+        .map(|(id, stars)| json!({ "id": id, "stars": stars }))
+        .collect();
+    Ok(Json(json!({ "previous": previous })))
 }
 
 /// Record a visit and return the previous one, for "since last visit".
@@ -634,6 +668,39 @@ mod tests {
         )
         .await;
         assert_eq!(st, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn rates_and_validates() {
+        let (app, _dir) = app().await;
+        let (st, v) = call(
+            &app,
+            "POST",
+            "/api/ratings",
+            Some(json!({"ids": [1], "stars": 5})),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["previous"], json!([{"id": 1, "stars": null}]));
+        let (_, v) = call(&app, "GET", "/api/torrents?sort=rating", None).await;
+        assert_eq!(v["torrents"][0]["id"], 1);
+        assert_eq!(v["torrents"][0]["rating"], 5);
+        let (st, _) = call(
+            &app,
+            "POST",
+            "/api/ratings",
+            Some(json!({"ids": [1], "stars": 6})),
+        )
+        .await;
+        assert_eq!(st, StatusCode::BAD_REQUEST);
+        let (st, _) = call(
+            &app,
+            "POST",
+            "/api/ratings",
+            Some(json!({"ids": [1], "stars": null})),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
     }
 
     #[tokio::test]

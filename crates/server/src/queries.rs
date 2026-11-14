@@ -62,6 +62,7 @@ pub enum Sort {
     Snatched,
     Leechers,
     Size,
+    Rating,
 }
 
 impl Sort {
@@ -72,6 +73,7 @@ impl Sort {
             "snatch" => Sort::Snatched,
             "leech" => Sort::Leechers,
             "size" => Sort::Size,
+            "rating" => Sort::Rating,
             _ => return None,
         })
     }
@@ -83,6 +85,7 @@ impl Sort {
             Sort::Snatched => "t.snatched DESC, t.uploaded_at DESC",
             Sort::Leechers => "t.leechers DESC, t.uploaded_at DESC",
             Sort::Size => "t.size_bytes DESC, t.uploaded_at DESC",
+            Sort::Rating => "r.stars IS NULL, r.stars DESC, t.uploaded_at DESC",
         }
     }
 }
@@ -122,6 +125,8 @@ pub struct TorrentRow {
     pub sticky: bool,
     pub stats_at: i64,
     pub mark: Option<Mark>,
+    /// 1–5 stars, `None` when unrated.
+    pub rating: Option<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -146,8 +151,9 @@ impl Store {
         let mut sql = String::from(
             "SELECT t.id, t.category, t.title, t.poster_url, t.preview_url, t.uploaded_at,
                     t.size_bytes, t.files, t.snatched, t.seeders, t.leechers, t.free,
-                    t.multiplier, t.uploader, t.sticky, t.stats_at, m.state, t.hash_id
-             FROM torrents t LEFT JOIN marks m ON m.torrent_id = t.id WHERE 1=1",
+                    t.multiplier, t.uploader, t.sticky, t.stats_at, m.state, t.hash_id, r.stars
+             FROM torrents t LEFT JOIN marks m ON m.torrent_id = t.id
+                             LEFT JOIN ratings r ON r.torrent_id = t.id WHERE 1=1",
         );
         let mut args: Vec<Box<dyn ToSql>> = Vec::new();
         match f.view {
@@ -221,6 +227,43 @@ impl Store {
                 previous.push((id, old.as_deref().and_then(Mark::parse)));
                 match mark {
                     Some(m) => put.execute(rusqlite::params![id, m.as_str(), now])?,
+                    None => del.execute([id])?,
+                };
+            }
+        }
+        tx.commit()?;
+        Ok(previous)
+    }
+
+    /// Set (or clear, with `None`) the star rating on each id. `stars` must be 1–5.
+    /// Returns the previous ratings for ids that exist, so the caller can undo.
+    pub fn set_ratings(
+        &mut self,
+        ids: &[u64],
+        stars: Option<u8>,
+        now: i64,
+    ) -> Result<Vec<(u64, Option<u8>)>> {
+        if let Some(s) = stars {
+            anyhow::ensure!((1..=5).contains(&s), "stars must be 1 to 5, got {s}");
+        }
+        let tx = self.conn.transaction()?;
+        let mut previous = Vec::with_capacity(ids.len());
+        {
+            let mut exists = tx.prepare_cached("SELECT 1 FROM torrents WHERE id = ?1")?;
+            let mut get = tx.prepare_cached("SELECT stars FROM ratings WHERE torrent_id = ?1")?;
+            let mut put = tx.prepare_cached(
+                "INSERT INTO ratings (torrent_id, stars, updated_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(torrent_id) DO UPDATE SET stars = excluded.stars,
+                     updated_at = excluded.updated_at",
+            )?;
+            let mut del = tx.prepare_cached("DELETE FROM ratings WHERE torrent_id = ?1")?;
+            for &id in ids {
+                if !exists.exists([id])? {
+                    continue;
+                }
+                previous.push((id, get.query_row([id], |r| r.get(0)).ok()));
+                match stars {
+                    Some(s) => put.execute(rusqlite::params![id, s, now])?,
                     None => del.execute([id])?,
                 };
             }
@@ -304,6 +347,7 @@ fn row_to_torrent(r: &Row) -> rusqlite::Result<TorrentRow> {
         sticky: r.get(14)?,
         stats_at: r.get(15)?,
         mark: state.as_deref().and_then(Mark::parse),
+        rating: r.get(18)?,
     })
 }
 
@@ -448,6 +492,39 @@ mod tests {
 
         s.set_marks(&[2], None, 6200).unwrap();
         assert_eq!(ids(&s.list_torrents(&Filter::default()).unwrap()), [3, 2]);
+    }
+
+    #[test]
+    fn rates_independently_of_marks_and_sorts_by_rating() {
+        let mut s = store();
+        s.set_marks(&[1], Some(Mark::Downloaded), 6000).unwrap();
+        assert_eq!(
+            s.set_ratings(&[1, 999], Some(4), 6000).unwrap(),
+            [(1, None)]
+        );
+        assert_eq!(s.set_ratings(&[2], Some(5), 6000).unwrap(), [(2, None)]);
+        assert_eq!(s.set_ratings(&[1], Some(2), 6100).unwrap(), [(1, Some(4))]);
+        assert!(s.set_ratings(&[1], Some(6), 6100).is_err());
+        assert!(s.set_ratings(&[1], Some(0), 6100).is_err());
+
+        let all = Filter {
+            view: View::All,
+            sort: Sort::Rating,
+            ..Default::default()
+        };
+        let rows = s.list_torrents(&all).unwrap();
+        assert_eq!(
+            ids(&rows),
+            [2, 1, 3],
+            "rated first, best first, then newest"
+        );
+        assert_eq!(
+            (rows[1].rating, rows[1].mark),
+            (Some(2), Some(Mark::Downloaded))
+        );
+
+        s.set_ratings(&[2], None, 6200).unwrap();
+        assert_eq!(s.list_torrents(&all).unwrap()[0].id, 1);
     }
 
     #[test]
