@@ -160,6 +160,10 @@ function render() {
       ${S.grid ? `<div class="cards" role="listbox">${g.items.map(cardHTML).join("")}</div>` : `<div role="listbox">${g.items.map(it => rowHTML(it, byDay)).join("")}</div>`}</section>`;
     }).join("");
   }
+  const oldest = S.summary?.counts.oldest_uploaded_at;
+  if (oldest && (S.view === "new" || S.view === "all") && cutoff() < oldest - 3600) {
+    main.insertAdjacentHTML("beforeend", `<p class="coverage">bbt has uploads back to ${fmtWhen(oldest)}. Earlier ones were never synced, so this list can't go further back. Each sync adds from where the last one stopped.</p>`);
+  }
   if (keepBanner) main.prepend(keepBanner);
   renderNav(); renderBins(); renderTarget(); renderSyncText();
   if (S.drawer) renderDrawer();

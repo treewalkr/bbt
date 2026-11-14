@@ -135,6 +135,8 @@ pub struct Summary {
     pub total: u64,
     /// New, non-sticky torrents since `from`, per category id.
     pub new_by_category: BTreeMap<u16, u64>,
+    /// Upload time of the oldest non-sticky torrent synced, if any.
+    pub oldest_uploaded_at: Option<i64>,
 }
 
 pub const MAX_LIMIT: u32 = 2000;
@@ -256,6 +258,11 @@ impl Store {
             downloaded: count(Mark::Downloaded),
             total: self.torrent_count()?,
             new_by_category,
+            oldest_uploaded_at: self.conn.query_row(
+                "SELECT MIN(uploaded_at) FROM torrents WHERE sticky = 0",
+                [],
+                |r| r.get(0),
+            )?,
         })
     }
 }
@@ -455,6 +462,11 @@ mod tests {
         );
         assert_eq!(sum.new_by_category, BTreeMap::from([(3, 1)]));
         assert_eq!(s.summary(Some(5000)).unwrap().new, 0);
+        assert_eq!(
+            sum.oldest_uploaded_at,
+            Some(1000),
+            "sticky rows are ignored"
+        );
     }
 
     #[test]
