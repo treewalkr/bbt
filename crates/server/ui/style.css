@@ -261,7 +261,6 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
 .rate:hover button{color:var(--line)}
 .rate button:hover,.rate button:hover~button{color:var(--watch)}
 
-/* blur titles: clear on hover, on the highlighted item, and in the details panel on hover */
-.hide-titles .row .title,.hide-titles .card .title,.hide-titles .drawer h4,.hide-titles .target b{filter:blur(6px);transition:filter .12s}
-.hide-titles .row:hover .title,.hide-titles .row.focus .title,.hide-titles .card:hover .title,.hide-titles .card.focus .title,.hide-titles .drawer h4:hover,.hide-titles .target:hover b{filter:none}
-@media (prefers-reduced-motion:reduce){.hide-titles .title,.hide-titles .drawer h4{transition:none}}
+/* blur titles: everywhere, until Option/Alt is held down (body.peek) */
+.hide-titles .row .title,.hide-titles .card .title,.hide-titles .drawer h4,.hide-titles .target b{filter:blur(6px)}
+.hide-titles.peek .row .title,.hide-titles.peek .card .title,.hide-titles.peek .drawer h4,.hide-titles.peek .target b{filter:none}

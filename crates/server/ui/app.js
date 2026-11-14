@@ -498,6 +498,11 @@ const setBlur = on => { document.body.classList.toggle("blur", on); $("#blurT").
 $("#blurT").onchange = e => setBlur(e.target.checked);
 const setHideTitles = on => { document.body.classList.toggle("hide-titles", on); $("#hideT").checked = on; };
 $("#hideT").onchange = e => setHideTitles(e.target.checked);
+// hold Option/Alt to read blurred titles; let go to blur them again
+const peek = on => document.body.classList.toggle("peek", on);
+addEventListener("keydown", e => { if (e.key === "Alt") peek(true); });
+addEventListener("keyup", e => { if (e.key === "Alt") peek(false); });
+addEventListener("blur", () => peek(false));
 $("#vList").onclick = () => { S.grid = false; $("#vList").ariaPressed = "true"; $("#vGrid").ariaPressed = "false"; render(); };
 $("#vGrid").onclick = () => { S.grid = true; $("#vGrid").ariaPressed = "true"; $("#vList").ariaPressed = "false"; render(); };
 $("#syncBtn").onclick = doSync;
