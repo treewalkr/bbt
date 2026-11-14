@@ -38,7 +38,7 @@ button{cursor:pointer}
 .cats input{accent-color:var(--new)}
 .cats input:checked+span{color:var(--text)}
 .cats .n{margin-left:auto;font-size:12px;color:var(--faint)}
-.sync{margin-top:auto;padding:10px 8px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:8px}
+.sync{margin-top:auto;position:sticky;bottom:-16px;background:var(--panel);padding:10px 8px 16px;margin-bottom:-16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:8px}
 .sync button{border:1px solid var(--line);background:var(--raise);border-radius:var(--r-s);padding:6px 10px}
 .sync button:hover{border-color:var(--muted)}
 .sync .prog{height:3px;background:var(--line);border-radius:2px;overflow:hidden}
@@ -56,6 +56,11 @@ button{cursor:pointer}
 .seg button[aria-pressed=true]{background:var(--raise);color:var(--text)}
 .toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer}
 .toggle input{accent-color:var(--new)}
+.tools{display:contents}
+.tg{display:flex;align-items:center;gap:8px 12px;padding-left:14px;border-left:1px solid var(--line)}
+.mbtn{display:none;border:1px solid var(--line);background:var(--panel);border-radius:var(--r-s);padding:5px 10px;font-size:13px;white-space:nowrap}
+.mbtn .n{color:var(--muted);margin-left:6px}
+.scrim{position:fixed;inset:0;z-index:14;background:#0009}
 .iconbtn{border:1px solid var(--line);background:var(--panel);border-radius:var(--r-s);padding:5px 9px;font-size:13px}
 
 /* ---------- list ---------- */
@@ -139,7 +144,9 @@ body:has(.drawer.open) .bin .count{font-size:18px}
 .bin:hover{background:color-mix(in srgb,var(--c) 22%,transparent)}
 .bin kbd{font:600 13px "IBM Plex Sans Thai";width:24px;height:24px;display:grid;place-items:center;border-radius:5px;background:var(--c);color:var(--ink)}
 .bin .lbl{font-weight:600;font-size:14px}
-.bin .lbl small{display:block;font-weight:400;font-size:11px;color:var(--muted)}
+.bin .lbl small{display:block;font-weight:400;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bin:disabled{opacity:.4;cursor:default}
+.bin:disabled:hover{background:color-mix(in srgb,var(--c) 10%,transparent)}
 .bin .count{font-family:"Bricolage Grotesque";font-size:22px;font-weight:700;color:var(--c)}
 .bin.bump .count{animation:bump .35s ease}
 @keyframes bump{40%{transform:translateY(-4px) scale(1.15)}}
@@ -150,7 +157,8 @@ body:has(.drawer.open) .bin .count{font-size:18px}
 .drawer.open{width:380px}
 .drawer .in{width:380px;height:100%;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:14px}
 .drawer header{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted)}
-.drawer .close{border:0;background:none;font-size:20px;line-height:1;color:var(--muted)}
+.drawer .close{border:0;background:none;font-size:20px;line-height:1;color:var(--muted);width:44px;height:44px;margin:-12px -12px -12px 0;border-radius:var(--r-s)}
+.drawer .close:hover{color:var(--text);background:var(--raise)}
 .drawer .big{display:grid;grid-template-columns:120px 1fr;gap:14px}
 .drawer .big .poster{width:120px;height:168px;font-size:12px;padding:8px}
 .drawer h4{margin:0;font-size:16px;font-weight:600;line-height:1.35;word-break:break-word}
@@ -193,9 +201,16 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
 }
 @media (max-width:760px){
   body{grid-template-columns:minmax(0,1fr);grid-template-areas:"top" "main" "bar"}
-  .top{flex-wrap:nowrap;overflow-x:auto;padding:10px 12px}.search{flex:0 0 170px}
+  .top{padding:10px 12px;gap:8px}.search{flex:1 1 0;min-width:0}
+  .mbtn{display:inline-flex;align-items:center}
+  .tools{display:none}
+  .top.more .tools{display:flex;flex-wrap:wrap;gap:12px 16px;width:100%;padding-top:4px}
+  .tg{border-left:0;padding-left:0;flex-wrap:wrap}
+  .rail.open{display:flex;position:fixed;top:0;bottom:0;left:0;width:min(300px,85vw);z-index:15;box-shadow:12px 0 40px #000a}
   .ghead{padding:14px 12px 8px}.ghead h3{font-size:22px}
-  .bar-wrap{padding:8px}
+  .bar-wrap{padding:8px;flex-wrap:wrap;gap:6px}
+  .bar-wrap .target{display:flex;align-items:baseline;gap:6px;width:auto;flex:1 1 100%;min-width:0;padding:0 4px}
+  .bar-wrap .target b{display:inline;max-width:none;min-width:0}
   .rail{display:none}
   .row,.colhead{grid-template-columns:4px 44px minmax(0,1fr) 64px;padding-right:12px}
   .colhead>span:nth-child(2){display:none}
@@ -204,7 +219,7 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
   .bins{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
   .bin .lbl{font-size:11px;text-align:center;line-height:1.2}.bin .count{font-size:18px}
   .bin{grid-template-columns:1fr;justify-items:center;padding:6px;gap:2px}
-  .bin .lbl small,.target{display:none}
+  .bin .lbl small{display:none}
   .drawer.open{width:100vw}.drawer .in{width:100vw}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -275,3 +290,4 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
 .ghead .act button.armed{color:var(--ink);background:var(--new);border-color:var(--new);font-weight:600}
 .target.rating{color:var(--watch)}
 .target.rating b{color:var(--watch)}
+.mbtn .dot{width:8px;height:8px;border-radius:50%;margin-right:8px;flex:none}

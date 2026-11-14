@@ -214,20 +214,25 @@ function render() {
 function renderNav() {
   const c = S.summary?.counts;
   const n = k => !c ? "" : k === "new" ? c.new : k === "all" ? c.total : c[k];
+  const [, label, col] = VIEWS.find(v => v[0] === S.view);
+  $("#railBtn").innerHTML = `<i class="dot" style="background:${col}"></i>${label}<span class="n">${n(S.view)}</span>`;
   $("#views").innerHTML = "<h2>Lists</h2>" + VIEWS.map(([k, l, col]) => `<button data-view="${k}" aria-current="${S.view === k}" style="--c:${col}"><i class="dot"></i>${l}<span class="n">${n(k)}</span></button>`).join("");
   const byCat = c?.new_by_category ?? {};
   const all = S.cats.size === Object.keys(CATS).length, none = S.cats.size === 0;
   $("#cats").innerHTML = `<div class="cats-head"><h2>Categories</h2><button data-cats="all" ${all ? "disabled" : ""}>All</button><button data-cats="none" ${none ? "disabled" : ""}>None</button></div>` + Object.entries(CATS).map(([k, l]) => `<label><input type="checkbox" data-cat="${k}" ${S.cats.has(+k) ? "checked" : ""}><span>${esc(l)}</span><span class="n">${byCat[k] || ""}</span></label>`).join("");
 }
+// On touch the first row is focused but unseen, so the bins wait for a tap on a torrent.
+const blind = () => touch() && !S.picked;
+function pick() { if (!S.picked) { S.picked = true; renderBins(); } }
 function renderBins() {
   const c = S.summary?.counts ?? {};
-  $("#bins").innerHTML = Object.entries(MARKS).map(([k, m]) => `<button class="bin" data-s="${{viewed:"viewed", view_later:"watch", download_later:"get", downloaded:"got"}[k]}" data-mark="${k}"><kbd>${m.key}</kbd><span class="lbl">${m.label}<small>${m.hint}</small></span><span class="count">${c[k] ?? 0}</span></button>`).join("");
+  $("#bins").innerHTML = Object.entries(MARKS).map(([k, m]) => `<button class="bin" data-s="${{viewed:"viewed", view_later:"watch", download_later:"get", downloaded:"got"}[k]}" data-mark="${k}" ${blind() ? "disabled" : ""}><kbd>${m.key}</kbd><span class="lbl">${m.label}<small>${m.hint}</small></span><span class="count">${c[k] ?? 0}</span></button>`).join("");
 }
 function renderTarget() {
   const t = $("#target"), it = flat.find(i => i.id === S.focus);
   const what = S.sel.size ? `${S.sel.size} selected` : it ? esc(code(it)) : "—";
   t.classList.toggle("rating", !!rateArmed);
-  t.innerHTML = rateArmed ? `Rate ${what}<b>1–5, or 0 to clear</b>` : `Applies to<b>${what}</b>`;
+  t.innerHTML = rateArmed ? `Rate ${what}<b>1–5, or 0 to clear</b>` : blind() && flat.length ? `Applies to<b>Tap a torrent first</b>` : `Applies to<b>${what}</b>`;
 }
 function renderSyncText() {
   if (S.syncing) return;
@@ -447,7 +452,7 @@ function move(d) {
   S.focus = n.id;
   const el = main.querySelector(`[data-id="${n.id}"]`);
   el?.classList.add("focus"); el?.scrollIntoView({block:"nearest"});
-  renderTarget();
+  pick(); renderTarget();
   if (S.drawer) openDrawer(n.id, {delay: FOLLOW_MS});
 }
 /* ===== bulk "mark viewed" =====
@@ -584,7 +589,7 @@ main.addEventListener("click", e => {
   // First click focuses; clicking the focused torrent again opens its details.
   if (S.focus === id && S.drawer !== id) return openDrawer(id);
   main.querySelector(".focus")?.classList.remove("focus");
-  S.focus = id; r.classList.add("focus"); renderTarget();
+  S.focus = id; r.classList.add("focus"); pick(); renderTarget();
   if (S.drawer) openDrawer(id, {delay: FOLLOW_MS});
 });
 $("#bins").addEventListener("click", e => { const b = e.target.closest(".bin"); if (b) setMark(targets(), b.dataset.mark, {advance:true}); });
@@ -597,7 +602,15 @@ $("#drawerIn").addEventListener("click", e => {
   if (e.target.closest("[data-act=close]")) return closeDrawer();
   if (e.target.closest("[data-act=download]")) return download(S.drawer);
 });
-function showView(v) { S.view = v; S.focus = null; S.sel.clear(); main.scrollTop = 0; load(); }
+function showView(v) { S.view = v; S.focus = null; S.picked = false; S.sel.clear(); main.scrollTop = 0; setRail(false); load(); }
+// Below 760px the rail is a sheet and the toolbar controls fold into View.
+function setRail(on) {
+  $("#rail").classList.toggle("open", on); $("#scrim").hidden = !on; $("#railBtn").ariaExpanded = String(on);
+  if (on) $("#views [aria-current=true]")?.focus();
+}
+$("#railBtn").onclick = () => setRail(true);
+$("#scrim").onclick = () => setRail(false);
+$("#moreBtn").onclick = () => { const on = $(".top").classList.toggle("more"); $("#moreBtn").ariaExpanded = String(on); };
 $("#views").addEventListener("click", e => { const b = e.target.closest("[data-view]"); if (b) showView(b.dataset.view); });
 $("#cats").addEventListener("change", e => { const c = +e.target.dataset.cat; e.target.checked ? S.cats.add(c) : S.cats.delete(c); saveCats(); load(); });
 $("#cats").addEventListener("click", e => {
@@ -668,7 +681,7 @@ document.addEventListener("keydown", e => {
   else if (k === "0") setMark(targets(), null);
   else if (k === "x" && S.focus) { const id = S.focus; S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); const c = main.querySelector(`[data-id="${id}"] .sel`); if (c) c.checked = S.sel.has(id); renderTarget(); }
   else if (k === "Enter" && S.focus) openDrawer(S.focus);
-  else if (k === "Escape") { disarmBulk(); closeDrawer(); if (S.sel.size) { S.sel.clear(); render(); } }
+  else if (k === "Escape") { disarmBulk(); setRail(false); closeDrawer(); if (S.sel.size) { S.sel.clear(); render(); } }
   else if (k === "o" && S.focus) { const it = S.items.find(i => i.id === S.focus); if (it && siteUrl(it)) window.open(siteUrl(it), "_blank", "noreferrer"); }
   else if (k === "u") undo();
   else if (k === "b") setBlur(!document.body.classList.contains("blur"));

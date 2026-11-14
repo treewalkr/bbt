@@ -12,7 +12,7 @@
 </head>
 <body class="blur">
 
-<aside class="rail" aria-label="Library">
+<aside class="rail" id="rail" aria-label="Library">
   <div class="brand"><b>bbt</b><span>Torrent inbox</span></div>
   <nav class="nav" id="views" aria-label="Lists"><h2>Lists</h2></nav>
   <div class="cats" id="cats" hidden><h2>Categories</h2></div>
@@ -26,8 +26,14 @@
   </div>
 </aside>
 
+<div class="scrim" id="scrim" hidden></div>
+
 <header class="top">
+  <button class="mbtn" id="railBtn" aria-controls="rail" aria-expanded="false">Lists</button>
   <label class="search"><span class="sr">Search titles</span><input id="q" type="search" placeholder="Search titles or uploaders  ( / )"></label>
+  <button class="mbtn" id="moreBtn" aria-controls="tools" aria-expanded="false">View</button>
+  <div class="tools" id="tools">
+  <div class="tg" role="group" aria-label="Filter">
   <label class="field" id="rangeField">From
     <select id="range">
       <option value="0" selected>Today</option>
@@ -38,14 +44,20 @@
     </select>
   </label>
   <label class="field" id="customWrap" hidden><span class="sr">From date</span><input type="date" id="from"> to now</label>
+  <label class="toggle"><input type="checkbox" id="freeOnly"> Free only</label>
+  </div>
+  <div class="tg" role="group" aria-label="Order and layout">
   <label class="field">Sort
     <select id="sort"><option value="new">Newest</option><option value="seed">Most seeders</option><option value="snatch">Most snatched</option><option value="leech">Most leechers</option><option value="size">Largest</option><option value="rating">Highest rated</option></select>
   </label>
   <div class="seg" role="group" aria-label="Layout"><button id="vList" aria-pressed="true">List</button><button id="vGrid" aria-pressed="false">Posters</button></div>
-  <label class="toggle"><input type="checkbox" id="freeOnly"> Free only</label>
+  </div>
+  <div class="tg" role="group" aria-label="Privacy">
   <label class="toggle" title="Hold Option to see posters"><input type="checkbox" id="blurT" checked> Blur posters</label>
   <label class="toggle" title="Hold Option to read titles"><input type="checkbox" id="hideT"> Blur titles</label>
+  </div>
   <button class="iconbtn" id="helpBtn" title="Keyboard shortcuts (?)">?</button>
+  </div>
 </header>
 
 <main id="main" tabindex="-1" aria-label="Torrents"></main>
