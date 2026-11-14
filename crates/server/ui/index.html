@@ -50,7 +50,7 @@
   <label class="field">Sort
     <select id="sort"><option value="new">Newest</option><option value="seed">Most seeders</option><option value="snatch">Most snatched</option><option value="leech">Most leechers</option><option value="size">Largest</option><option value="rating">Highest rated</option></select>
   </label>
-  <div class="seg" role="group" aria-label="Layout"><button id="vList" aria-pressed="true">List</button><button id="vGrid" aria-pressed="false">Posters</button></div>
+  <div class="seg" role="group" aria-label="Layout"><button id="vList" aria-pressed="true">List</button><button id="vGrid" aria-pressed="false">Posters</button><button id="vSwipe" aria-pressed="false">Swipe</button></div>
   </div>
   <div class="tg" role="group" aria-label="Privacy">
   <label class="toggle" title="Hold Option to see posters"><input type="checkbox" id="blurT" checked> Blur posters</label>
@@ -76,6 +76,18 @@
   <div class="lb-stage" id="lbStage"><img id="lbImg" alt="" referrerpolicy="no-referrer" title="Click for full size (f)"></div>
   <button class="lb-btn lb-next" data-lb="next" aria-label="Next image"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
   <div class="lb-bar"><span id="lbCount"></span><button class="lb-size" data-lb="reveal" id="lbReveal" hidden>Show image (v)</button><button class="lb-size" data-lb="size" id="lbSize" aria-pressed="false">Full size</button><a id="lbOpen" target="_blank" rel="noreferrer">Open original</a></div>
+</div>
+
+<div class="swipe" id="swipe" hidden role="dialog" aria-modal="true" aria-label="Swipe through new torrents" tabindex="-1">
+  <header class="sw-top"><span id="swCount"></span><div class="sw-prog" aria-hidden="true"><i id="swProg"></i></div><button class="lb-btn" data-sw="close" aria-label="Leave swipe mode (Esc)"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
+  <div class="sw-deck" id="swDeck"></div>
+  <div class="sw-acts" id="swActs">
+    <button class="sw-btn" data-sw="viewed"><kbd>←</kbd>Pass<small>Viewed</small></button>
+    <button class="sw-btn" data-sw="view_later"><kbd>↑</kbd>Later<small>View later</small></button>
+    <button class="sw-btn" data-sw="download_later"><kbd>→</kbd>Keep<small>Download later</small></button>
+  </div>
+  <p class="sw-hint" id="swHint"></p>
+  <div class="sr" id="swAnnounce" aria-live="polite"></div>
 </div>
 
 <div class="toast" id="toast" role="status"><span id="toastMsg"></span><button id="undoBtn">Undo</button></div>
@@ -119,8 +131,16 @@
       <button type="button" class="kb" data-k="lbFull"></button><span>Full size or fit to screen</span>
       <kbd>Esc</kbd><span>Close the viewer</span>
     </div></section>
+    <section><h4>Swipe mode</h4><div class="keys">
+      <button type="button" class="kb" data-k="swipe"></button><span>Start or leave swipe mode</span>
+      <kbd>←</kbd><span>Pass: mark Viewed</span>
+      <kbd>↑</kbd><span>Later: mark View later</span>
+      <kbd>→</kbd><span>Keep: mark Download later</span>
+      <kbd>Space</kbd><span>Next screenshot (or tap the right side)</span>
+      <kbd>Enter</kbd><span>Screenshot at full size</span>
+    </div></section>
   </div>
-  <p class="kbnote">Enter, Esc, the arrows and Option are fixed. Open this list with <button type="button" class="kb" data-k="help"></button></p>
+  <p class="kbnote">Enter, Esc, Space, the arrows and Option are fixed. Open this list with <button type="button" class="kb" data-k="help"></button></p>
   <form method="dialog" class="foot"><button type="button" id="kbReset">Reset to defaults</button><button>Close</button></form>
 </dialog>
 

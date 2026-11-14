@@ -21,7 +21,7 @@ const MARKS = {
 const KEY_DEFAULTS = {
   next:"j", prev:"k", open:"l", site:"o", search:"/",
   viewed:"1", view_later:"2", download_later:"3", downloaded:"4", unmark:"0", bulk:"!", undo:"u",
-  rate:"r", select:"x", blur:"b", titles:"t", help:"?",
+  rate:"r", select:"x", blur:"b", titles:"t", help:"?", swipe:"s",
   lbPrev:"h", lbNext:"l", lbReveal:"v", lbFull:"f",
 };
 // The viewer has its own keys, so a key can mean one thing there and another in the list.
@@ -233,6 +233,7 @@ function render() {
   if (keepBanner) main.prepend(keepBanner);
   renderNav(); renderBins(); renderTarget(); renderSyncText(); syncRange();
   if (S.drawer) renderDrawer();
+  if (SW.open) renderSwipe();
 }
 function renderNav() {
   const c = S.summary?.counts;
@@ -310,11 +311,15 @@ function openDrawer(id, {delay = 0, focus = false} = {}) {
 async function fetchDetails(id) {
   detailsBusy.set(id, "load");
   // A cache hit answers at once; anything slower is a trip to the tracker.
-  const slow = setTimeout(() => { detailsBusy.set(id, "tracker"); if (S.drawer === id) renderDrawer(); }, SLOW_MS);
+  const slow = setTimeout(() => { detailsBusy.set(id, "tracker"); detailsChanged(id); }, SLOW_MS);
   try { detailsCache.set(id, await api("GET", `/api/torrents/${id}/details`)); }
   catch (e) { detailsCache.set(id, {error: e.message}); }
   clearTimeout(slow); detailsBusy.delete(id);
+  detailsChanged(id);
+}
+function detailsChanged(id) {
   if (S.drawer === id) renderDrawer();
+  if (SW.open && SW.cur === id) renderSwMedia();
 }
 function closeDrawer() {
   const inside = $("#drawer").contains(document.activeElement);
@@ -524,6 +529,192 @@ function bulkViewed(g) {
   setMark(ids, "viewed"); // its own toast (with Undo) replaces the confirm prompt
 }
 
+/* ===== swipe mode: one new torrent at a time =====
+   Pass, Later and Keep are the Viewed, View later and Download later marks.
+   The pile is the New list as filtered when swipe mode opens. A card is on the pile
+   while it has no mark, so Undo puts it straight back on top. */
+const SW = {open:false, order:[], pending:new Set(), cur:null, photo:0, revealed:false, fetchT:null, drag:false, leaving:false};
+const SW_DIR = {viewed:[-1, 0], view_later:[0, -1], download_later:[1, 0], downloaded:[0, 1]};
+const SW_STAMP = {viewed:"Pass", view_later:"Later", download_later:"Keep"};
+const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+function swPile() {
+  const byId = new Map(S.items.map(i => [i.id, i]));
+  return SW.order.map(id => byId.get(id)).filter(it => it && !it.mark && !SW.pending.has(it.id));
+}
+const swCurrent = () => swPile()[0];
+const swSlides = it => [...new Set([it.poster_url, ...(detailsCache.get(it.id)?.images ?? [])].filter(Boolean))];
+const swBlurred = () => document.body.classList.contains("blur") && !SW.revealed;
+function swInfo(it) {
+  return `<h2 class="title" title="${esc(it.title)}">${esc(clean(it.title))}</h2><div class="tags">${tags(it)}</div>
+  <div class="sw-stats"><span><b>${fmtSize(it.size_bytes)}</b> ${plural(it.files, "file")}</span><span><b>${it.seeders}</b> seeding</span><span><b>${it.leechers}</b> leeching</span><span><b>${it.snatched}</b> snatched</span><span>${fmtAgo(it.uploaded_at)}</span></div>`;
+}
+function swCardHTML(it, under) {
+  const url = under ? swSlides(it)[0] : null;
+  return `<article class="sw-card${under ? " under" : ""}" ${under ? 'aria-hidden="true"' : 'id="swCard"'} data-id="${it.id}">
+  <div class="sw-media" style="--g:${grad(it)}"><span class="sw-code">${esc(code(it))}</span>${url ? `<img src="${esc(url)}" alt="" referrerpolicy="no-referrer" draggable="false" onerror="this.remove()">` : ""}</div>
+  ${under ? "" : Object.entries(SW_STAMP).map(([k, l]) => `<span class="sw-stamp" data-stamp="${k}" aria-hidden="true">${l}</span>`).join("")}
+  <div class="sw-info">${swInfo(it)}</div></article>`;
+}
+function renderSwMedia() {
+  const it = swCurrent(), m = $("#swCard .sw-media");
+  if (!it || !m || it.id !== SW.cur) return;
+  const slides = swSlides(it), d = detailsCache.get(it.id), busy = detailsBusy.get(it.id);
+  SW.photo = Math.min(SW.photo, Math.max(0, slides.length - 1));
+  const url = slides[SW.photo];
+  const note = busy === "tracker" ? `<span class="sw-note fetching">Fetching screenshots from the tracker…</span>`
+    : busy === "load" ? `<span class="sw-note">Loading screenshots…</span>`
+    : d?.error ? `<span class="sw-note">Couldn't get screenshots</span>`
+    : !d ? `<span class="sw-note">Screenshots load when you stay on this card</span>`
+    : !d.images.length ? `<span class="sw-note">No screenshots on the tracker</span>` : "";
+  m.classList.toggle("revealed", SW.revealed);
+  m.innerHTML = `<span class="sw-code">${esc(code(it))}</span>${url ? `<img src="${esc(url)}" alt="" referrerpolicy="no-referrer" draggable="false" onerror="this.remove()">` : ""}
+  ${slides.length > 1 ? `<div class="sw-bars" aria-hidden="true">${slides.map((_, i) => `<i class="${i === SW.photo ? "on" : ""}"></i>`).join("")}</div>` : ""}${note}
+  ${url && swBlurred() ? `<button class="sw-reveal" data-sw="reveal">Show (${esc(keyOf("lbReveal"))})</button>` : ""}`;
+  if (slides[SW.photo + 1]) new Image().src = slides[SW.photo + 1];
+}
+function swHint() {
+  const h = $("#swHint"); if (!h) return;
+  h.classList.toggle("rating", !!rateArmed && SW.open);
+  h.textContent = rateArmed && SW.open ? "Rate it: press 1–5, or 0 to clear."
+    : `Space: next screenshot. Enter: full size. ${keyOf("undo")}: undo. ${keyOf("rate")}: rate. Esc: leave.`;
+}
+function renderSwipe() {
+  if (!SW.open || SW.drag || SW.leaving) return;
+  const pile = swPile(), it = pile[0], total = SW.order.length;
+  $("#swCount").textContent = it ? `${pile.length} of ${total} left` : `All ${total} sorted`;
+  $("#swProg").style.width = `${total ? (total - pile.length) / total * 100 : 0}%`;
+  for (const b of $("#swActs").querySelectorAll("button")) b.disabled = !it;
+  if (!it) {
+    SW.cur = null; clearTimeout(SW.fetchT);
+    $("#swDeck").innerHTML = `<div class="empty sw-done"><h3>All caught up</h3>${tallyHTML()}<p>You've sorted every new torrent ${rangeText()}.</p><button data-sw="close">Back to the list</button></div>`;
+    return;
+  }
+  if (it.id !== SW.cur) {
+    SW.cur = it.id; SW.photo = 0; SW.revealed = false;
+    $("#swDeck").innerHTML = (pile[1] ? swCardHTML(pile[1], true) : "") + swCardHTML(it, false);
+    $("#swAnnounce").textContent = `${clean(it.title)}. ${fmtSize(it.size_bytes)}. ${pile.length} left.`;
+    // Screenshots are a tracker request, so only a card you stay on asks for them.
+    clearTimeout(SW.fetchT);
+    if (!detailsCache.has(it.id) && !detailsBusy.has(it.id)) SW.fetchT = setTimeout(() => { if (SW.cur === it.id) fetchDetails(it.id); }, FOLLOW_MS);
+  } else {
+    $("#swCard .sw-info").innerHTML = swInfo(it); // a rating changed
+  }
+  renderSwMedia();
+}
+async function openSwipe() {
+  if (S.view !== "new" && S.view !== "all") { S.view = "new"; S.focus = null; S.sel.clear(); setRail(false); await load(); }
+  const fresh = flat.filter(i => !i.mark).map(i => i.id);
+  // Start at the focused torrent, then wrap round to the ones above it.
+  const at = Math.max(0, fresh.indexOf(S.focus));
+  SW.order = [...fresh.slice(at), ...fresh.slice(0, at)];
+  if (!SW.order.length) return toast(`Nothing new to swipe ${rangeText()}. Pick an earlier From date.`, false);
+  closeDrawer(); armRate(false);
+  Object.assign(SW, {open:true, cur:null, drag:false, leaving:false}); SW.pending.clear();
+  $("#swipe").hidden = false; $("#vSwipe").ariaPressed = "true";
+  renderSwipe(); swHint(); $("#swipe").focus();
+}
+function closeSwipe() {
+  if (!SW.open) return;
+  SW.open = false; clearTimeout(SW.fetchT); armRate(false);
+  $("#swipe").hidden = true; $("#vSwipe").ariaPressed = "false"; $("#swDeck").innerHTML = "";
+  const next = swPile()[0]; if (next) S.focus = next.id;
+  render(); scrollFocus(); main.focus({preventScroll: true});
+}
+function swDecide(mark) {
+  const it = swCurrent();
+  if (!it || SW.leaving) return;
+  const card = $("#swCard"), [dx, dy] = SW_DIR[mark];
+  SW.pending.add(it.id); S.focus = it.id;
+  setMark([it.id], mark).finally(() => { SW.pending.delete(it.id); renderSwipe(); });
+  const next = () => { SW.leaving = false; renderSwipe(); };
+  if (!card || reduced()) return next();
+  SW.leaving = true;
+  card.style.transition = "transform .22s ease-in, opacity .22s ease-in";
+  card.style.transform = `translate(${dx * 110}vw, ${dy * 110}vh) rotate(${dx * 16}deg)`;
+  card.style.opacity = "0";
+  const s = card.querySelector(`[data-stamp="${mark}"]`); if (s) s.style.opacity = 1;
+  setTimeout(next, 200);
+}
+function swStep(d) {
+  const it = swCurrent(); if (!it) return;
+  const n = swSlides(it).length, i = SW.photo + d;
+  if (i >= 0 && i < n) { SW.photo = i; renderSwMedia(); }
+}
+function swReveal() { SW.revealed = true; renderSwMedia(); }
+function swFull() {
+  const it = swCurrent(), slides = it ? swSlides(it) : [];
+  if (!slides.length) return;
+  openViewer(slides, SW.photo);
+  if (SW.revealed) revealShots(true);
+}
+function swipeKey(e) {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key;
+  if ((k === "Enter" || k === " ") && e.target.closest?.("button")) return; // a focused button handles these itself
+  if (!S.keys && !["Escape", "Enter", " ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(k)) return;
+  const it = swCurrent();
+  if (rateArmed && /^[0-5]$/.test(k)) { armRate(false); e.preventDefault(); if (it) setRating([it.id], k === "0" ? null : +k); return; }
+  if (rateArmed) armRate(false);
+  const mark = k === "ArrowLeft" ? "viewed" : k === "ArrowRight" ? "download_later" : k === "ArrowUp" ? "view_later" : Object.keys(MARKS).find(m => hit(m, e));
+  if (mark) { e.preventDefault(); return swDecide(mark); }
+  if (k === "Escape" || hit("swipe", e)) return closeSwipe();
+  if (k === " " || hit("lbNext", e)) { e.preventDefault(); swStep(1); }
+  else if (hit("lbPrev", e)) swStep(-1);
+  else if (k === "Enter" || hit("open", e)) { e.preventDefault(); swFull(); }
+  else if (hit("lbReveal", e)) swReveal();
+  else if (hit("undo", e)) undo();
+  else if (hit("rate", e) && it) armRate(true);
+  else if (hit("blur", e)) { setBlur(!document.body.classList.contains("blur")); renderSwMedia(); }
+  else if (hit("titles", e)) setHideTitles(!document.body.classList.contains("hide-titles"));
+  else if (hit("help", e)) $("#help").showModal();
+}
+$("#swipe").addEventListener("click", e => {
+  const v = e.target.closest("[data-view]");
+  if (v) { closeSwipe(); return showView(v.dataset.view); }
+  const a = e.target.closest("[data-sw]")?.dataset.sw;
+  if (a === "close") closeSwipe();
+  else if (a === "reveal") swReveal();
+  else if (MARKS[a]) swDecide(a);
+});
+// Drag the card: past the line it's a decision, short of it the card springs back.
+// A tap without a drag reveals a blurred image, or flips screenshots (left third back, the rest forward).
+const SW_LINE = 110;
+const clamp01 = v => Math.max(0, Math.min(1, v));
+$("#swDeck").addEventListener("pointerdown", e => {
+  const card = e.target.closest("#swCard");
+  if (!card || e.button !== 0 || e.target.closest("button") || SW.leaving) return;
+  const x0 = e.clientX, y0 = e.clientY;
+  let dx = 0, dy = 0, moved = false;
+  card.setPointerCapture(e.pointerId); card.style.transition = "none";
+  const stamp = (k, v) => { const s = card.querySelector(`[data-stamp="${k}"]`); if (s) s.style.opacity = v; };
+  const up = () => -dy > Math.abs(dx);
+  const move = m => {
+    dx = m.clientX - x0; dy = m.clientY - y0;
+    if (!moved && Math.hypot(dx, dy) < 6) return;
+    moved = true; SW.drag = true;
+    card.style.transform = `translate(${dx}px, ${dy}px) rotate(${dx / 20}deg)`;
+    stamp("viewed", up() ? 0 : clamp01(-dx / SW_LINE));
+    stamp("download_later", up() ? 0 : clamp01(dx / SW_LINE));
+    stamp("view_later", up() ? clamp01(-dy / SW_LINE) : 0);
+  };
+  const done = ev => {
+    card.removeEventListener("pointermove", move); card.removeEventListener("pointerup", done); card.removeEventListener("pointercancel", done);
+    SW.drag = false;
+    const cancelled = ev.type === "pointercancel";
+    if (!moved) {
+      if (cancelled || !e.target.closest(".sw-media")) return;
+      if (swBlurred() && swSlides(swCurrent() ?? {}).length) return swReveal();
+      const r = card.getBoundingClientRect();
+      return swStep(ev.clientX < r.left + r.width / 3 ? -1 : 1);
+    }
+    const mark = cancelled ? null : up() && -dy > SW_LINE ? "view_later" : dx < -SW_LINE ? "viewed" : dx > SW_LINE ? "download_later" : null;
+    if (mark) return swDecide(mark);
+    card.style.transition = "transform .2s ease"; card.style.transform = "";
+    for (const s of card.querySelectorAll("[data-stamp]")) s.style.opacity = 0;
+  };
+  card.addEventListener("pointermove", move); card.addEventListener("pointerup", done); card.addEventListener("pointercancel", done);
+});
+
 /* ===== older pages (Everything, scroll to the end) ===== */
 const O = {busy:false, msg:"", budgetLeft:null, error:false};
 function olderBlocked() {
@@ -577,7 +768,7 @@ let rateArmed = 0, rateT;
 function armRate(on) {
   rateArmed = on ? Date.now() : 0; clearTimeout(rateT);
   if (on) rateT = setTimeout(() => armRate(false), RATE_MS);
-  renderTarget();
+  renderTarget(); swHint();
 }
 
 /* ===== sync ===== */
@@ -681,6 +872,7 @@ function setGrid(on) {
 }
 $("#vList").onclick = () => { setGrid(false); render(); scrollFocus(); };
 $("#vGrid").onclick = () => { setGrid(true); render(); scrollFocus(); };
+$("#vSwipe").onclick = openSwipe;
 $("#syncBtn").onclick = doSync;
 $("#helpBtn").onclick = () => $("#help").showModal();
 $("#setBtn").onclick = () => $("#settings").showModal();
@@ -708,6 +900,7 @@ document.addEventListener("keydown", e => {
     else if (k === "Escape") closeViewer();
     return;
   }
+  if (SW.open) { if (!document.querySelector("dialog[open]")) swipeKey(e); return; }
   if (e.target.matches?.("input[type=search],input[type=text],input[type=number],input[type=date],select")) { if (k === "Escape") e.target.blur(); return; }
   if (document.querySelector("dialog[open]") || e.metaKey || e.ctrlKey || e.altKey) return;
   const step = S.grid ? gridCols() : 1;
@@ -735,6 +928,7 @@ document.addEventListener("keydown", e => {
   else if (hit("titles", e)) setHideTitles(!document.body.classList.contains("hide-titles"));
   else if (hit("search", e)) { e.preventDefault(); $("#q").focus(); }
   else if (hit("help", e)) $("#help").showModal();
+  else if (hit("swipe", e)) openSwipe();
 });
 
 /* ===== key editor (in the Keyboard dialog) ===== */
@@ -743,7 +937,7 @@ const ACTION_NAMES = {
   next:"Next torrent", prev:"Previous torrent", open:"Open details", site:"Open on the tracker", search:"Search",
   viewed:"Viewed", view_later:"View later", download_later:"Download later", downloaded:"Downloaded",
   unmark:"Back to New", bulk:"Mark the day viewed", undo:"Undo", rate:"Rate", select:"Select",
-  blur:"Blur posters", titles:"Blur titles", help:"Keyboard help",
+  blur:"Blur posters", titles:"Blur titles", help:"Keyboard help", swipe:"Swipe mode",
   lbPrev:"Previous screenshot", lbNext:"Next screenshot", lbReveal:"Show a blurred screenshot", lbFull:"Full size or fit",
 };
 function saveKeys() {
@@ -764,6 +958,8 @@ function renderKeys() {
   $("#q").placeholder = `Search titles or uploaders  ( ${keyOf("search")} )`;
   $("#helpBtn").title = `Keyboard shortcuts (${keyOf("help")})`;
   $("#lbReveal").textContent = `Show image (${keyOf("lbReveal")})`;
+  $("#vSwipe").title = `Swipe through new torrents (${keyOf("swipe")})`;
+  swHint();
   renderBins();
   if (S.drawer) renderDrawer();
 }
