@@ -85,21 +85,12 @@ pub struct Tracker<'a> {
 
 impl PageSource for Tracker<'_> {
     async fn fetch_page(&mut self, n: u32) -> tracker::Result<ListPage> {
-        if !self.client.has_session() {
-            self.client.login(self.creds).await?;
-        }
         let path = if n == 0 {
             "browse.php".to_string()
         } else {
             format!("browse.php?page={n}")
         };
-        let html = match self.client.get_html(&path).await {
-            Err(tracker::Error::NotLoggedIn) => {
-                self.client.login(self.creds).await?;
-                self.client.get_html(&path).await?
-            }
-            other => other?,
-        };
+        let html = self.client.fetch_html(&path, self.creds).await?;
         Ok(parse_list_page(&html))
     }
 }

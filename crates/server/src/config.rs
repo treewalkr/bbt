@@ -39,21 +39,36 @@ pub struct LiveSync {
     pub requests: u32,
 }
 
-/// Sync against the real site. Saves cookies even when the sync fails.
-pub async fn sync_now(store: &mut Store, cfg: &Config, max_pages: u32) -> Result<LiveSync> {
+/// A client using the stored device id and session cookies.
+pub fn client(store: &Store, cfg: &Config) -> Result<Client> {
     let device_id = device_id(store, cfg.device_id.as_deref())?;
     let cookies = store.get("cookies")?;
-    let mut client = Client::new(&cfg.base_url, &device_id, cookies.as_deref(), REQUEST_GAP)?;
+    Ok(Client::new(
+        &cfg.base_url,
+        &device_id,
+        cookies.as_deref(),
+        REQUEST_GAP,
+    )?)
+}
+
+/// Sync against the real site. Saves cookies even when the sync fails.
+pub async fn sync_now(
+    store: &mut Store,
+    cfg: &Config,
+    client: &mut Client,
+    max_pages: u32,
+) -> Result<LiveSync> {
+    let before = client.requests();
     let now = chrono::Utc::now().timestamp();
     let mut source = Tracker {
-        client: &mut client,
+        client: &mut *client,
         creds: &cfg.creds,
     };
     let outcome = sync::run(store, &mut source, max_pages, now).await;
     store.set("cookies", &client.cookie_header())?;
     Ok(LiveSync {
         outcome: outcome?,
-        requests: client.requests(),
+        requests: client.requests() - before,
     })
 }
 

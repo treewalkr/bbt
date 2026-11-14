@@ -4,6 +4,7 @@ use crate::config::{self, Config};
 use crate::queries::{Filter, Mark, Sort, View};
 use crate::store::Store;
 use crate::sync::{self, HARD_MAX_PAGES, Outcome};
+use crate::tracker::Client;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
@@ -19,8 +20,10 @@ pub struct AppState {
     store: Mutex<Store>,
     /// Held for the whole duration of a sync so two can never overlap.
     sync_lock: Mutex<()>,
-    /// `None` disables live syncing (tests).
+    /// `None` disables all tracker access (tests).
     config: Option<Config>,
+    /// One client for sync, details and downloads, so the request gap applies to all.
+    client: Mutex<Option<Client>>,
 }
 
 impl AppState {
@@ -30,6 +33,7 @@ impl AppState {
             store: Mutex::new(Store::open(db_path)?),
             sync_lock: Mutex::new(()),
             config,
+            client: Mutex::new(None),
         }))
     }
 }
@@ -214,7 +218,12 @@ async fn run_sync(State(s): State<Arc<AppState>>) -> ApiResult<Value> {
     };
     // Separate connection so the UI stays responsive while sync waits between pages.
     let mut store = Store::open(&s.db_path)?;
-    let live = config::sync_now(&mut store, cfg, HARD_MAX_PAGES).await?;
+    let mut client = s.client.lock().await;
+    if client.is_none() {
+        *client = Some(config::client(&store, cfg)?);
+    }
+    let client = client.as_mut().expect("client was just set");
+    let live = config::sync_now(&mut store, cfg, client, HARD_MAX_PAGES).await?;
     Ok(Json(match live.outcome {
         Outcome::CoolingDown { seconds_left } => json!({
             "status": "cooling_down",

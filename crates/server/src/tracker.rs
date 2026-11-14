@@ -29,6 +29,11 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+pub struct Download {
+    pub bytes: Vec<u8>,
+    pub content_disposition: Option<String>,
+}
+
 pub struct Credentials {
     pub username: String,
     pub password: String,
@@ -152,6 +157,51 @@ impl Client {
             return Err(Error::NotLoggedIn);
         }
         Ok(html)
+    }
+
+    /// [`Client::get_html`], logging in first if needed and once more if the session expired.
+    pub async fn fetch_html(&mut self, path: &str, creds: &Credentials) -> Result<String> {
+        if !self.has_session() {
+            self.login(creds).await?;
+        }
+        match self.get_html(path).await {
+            Err(Error::NotLoggedIn) => {
+                self.login(creds).await?;
+                self.get_html(path).await
+            }
+            other => other,
+        }
+    }
+
+    /// Download a file (a `.torrent`). Fails if tracker answers with an HTML page instead.
+    pub async fn fetch_file(&mut self, path: &str) -> Result<Download> {
+        let resp = self.send(self.request_get(path)).await?;
+        let status = resp.status();
+        let header = |name| {
+            resp.headers()
+                .get(name)
+                .and_then(|v: &reqwest::header::HeaderValue| v.to_str().ok())
+                .map(str::to_string)
+        };
+        let content_type = header(reqwest::header::CONTENT_TYPE).unwrap_or_default();
+        let disposition = header(reqwest::header::CONTENT_DISPOSITION);
+        if status.is_redirection() {
+            return Err(Error::Unexpected {
+                path: path.into(),
+                detail: format!("redirect to {}", header(LOCATION).unwrap_or_default()),
+            });
+        }
+        let bytes = resp.bytes().await?;
+        if !status.is_success() || content_type.contains("html") {
+            return Err(Error::Unexpected {
+                path: path.into(),
+                detail: format!("status {status}, {}", summarize(&decode(&bytes))),
+            });
+        }
+        Ok(Download {
+            bytes: bytes.to_vec(),
+            content_disposition: disposition,
+        })
     }
 
     fn url(&self, path: &str) -> String {

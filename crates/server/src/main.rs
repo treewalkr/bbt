@@ -29,7 +29,8 @@ async fn sync_cmd(args: &[String]) -> Result<()> {
     let cfg = Config::from_env()?;
     let mut store =
         Store::open(&cfg.db_path).with_context(|| format!("opening {}", cfg.db_path))?;
-    let live = config::sync_now(&mut store, &cfg, max_pages).await?;
+    let mut client = config::client(&store, &cfg)?;
+    let live = config::sync_now(&mut store, &cfg, &mut client, max_pages).await?;
     match live.outcome {
         Outcome::CoolingDown { seconds_left } => {
             println!(
