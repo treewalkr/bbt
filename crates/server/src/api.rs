@@ -127,7 +127,12 @@ async fn summary(
         "last_sync": store.last_sync()?,
         "last_visit": store.get("last_visit")?.and_then(|v| v.parse::<i64>().ok()),
         "coverage_from": coverage_from(&store)?,
-        "site": s.config.as_ref().map(|c| c.base_url.trim_end_matches('/').to_string() + "/"),
+        // `{id}` and `{hash_id}` are filled in by the UI.
+        "details_url": s.config.as_ref().map(|c| format!(
+            "{}/{}",
+            c.base_url.trim_end_matches('/'),
+            c.site.details_template()
+        )),
     })))
 }
 
@@ -393,12 +398,9 @@ async fn load_older(State(s): State<Arc<AppState>>) -> ApiResult<Value> {
         *client = Some(config::client(&*s.store.lock().await, cfg)?);
     }
     let client = client.as_mut().expect("client was just set");
-    let path = if cursor.page == 0 {
-        "browse.php".to_string()
-    } else {
-        format!("browse.php?page={}", cursor.page)
-    };
-    let result = client.fetch_html(&path, &cfg.creds).await;
+    let result = client
+        .fetch_html(&cfg.site.list_page(cursor.page), &cfg.creds)
+        .await;
 
     let mut store = s.store.lock().await;
     store.set("cookies", &client.cookie_header())?;
@@ -457,10 +459,7 @@ async fn fetch_details(s: &AppState, id: u64) -> Result<Details, ApiError> {
     }
     let client = client.as_mut().expect("client was just set");
     let result = client
-        .fetch_html(
-            &format!("details.php?id={id}&hash_id={hash_id}"),
-            &cfg.creds,
-        )
+        .fetch_html(&cfg.site.details_page(id, hash_id), &cfg.creds)
         .await;
     let store = s.store.lock().await;
     store.set("cookies", &client.cookie_header())?;

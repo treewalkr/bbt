@@ -70,12 +70,12 @@ pub struct Details {
 pub fn parse_details_page(html: &str) -> Details {
     let doc = Html::parse_document(html);
     let download_path = doc
-        .select(&sel("a[href^='download.php?']"))
+        .select(&sel("a[href*='download'][href*='.php?']"))
         .next()
         .and_then(|a| a.value().attr("href"))
         .map(str::to_string);
     let mut images: Vec<String> = Vec::new();
-    for img in doc.select(&sel(".post-descr img")) {
+    for img in doc.select(&sel("[class*='-descr'] img")) {
         if let Some(src) = img.value().attr("src").map(str::trim)
             && (src.starts_with("https://") || src.starts_with("http://"))
             && !images.iter().any(|i| i == src)
@@ -107,7 +107,7 @@ fn parse_row(row: ElementRef) -> Option<ListedTorrent> {
     let link = cells[2].select(&sel("a[href^='details.php?id=']")).next()?;
     let href = link.value().attr("href")?;
     let id = query_param(href, "id")?.parse().ok()?;
-    let hash_id = query_param(href, "hash_id")?.parse().ok()?;
+    let hash_id = second_number_param(href)?;
     let title = link
         .select(&sel("b"))
         .last()
@@ -124,14 +124,11 @@ fn parse_row(row: ElementRef) -> Option<ListedTorrent> {
         .filter(|s| s.starts_with("http"))
         .map(str::to_string);
     let preview_url = cells[2]
-        .select(&sel("a.preview-btn"))
+        .select(&sel("a[class*='preview-btn']"))
         .next()
         .and_then(|a| a.value().attr("href"))
         .map(str::to_string);
-    let sticky = cells[2]
-        .select(&sel("img[src*='sticky.gif']"))
-        .next()
-        .is_some();
+    let sticky = cells[2].select(&sel("img[src*='sticky']")).next().is_some();
 
     let uploader_link = cells[11]
         .select(&sel("a[href^='userdetails.php?id=']"))
@@ -169,6 +166,17 @@ fn text(e: ElementRef) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// The numeric query parameter that comes with `id` in a details link. Its name
+/// differs between sites, so it is found by position rather than by name.
+fn second_number_param(href: &str) -> Option<u64> {
+    let query = href.split_once('?')?.1;
+    query
+        .split('&')
+        .filter_map(|kv| kv.split_once('='))
+        .filter(|(k, _)| *k != "id")
+        .find_map(|(_, v)| v.parse().ok())
 }
 
 fn query_param<'a>(href: &'a str, key: &str) -> Option<&'a str> {
@@ -224,6 +232,13 @@ pub fn parse_size(s: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_the_hash_param_whatever_its_name() {
+        assert_eq!(second_number_param("details.php?id=1&hash_id=22"), Some(22));
+        assert_eq!(second_number_param("details.php?id=1&key=33&x=y"), Some(33));
+        assert_eq!(second_number_param("details.php?id=1"), None);
+    }
 
     #[test]
     fn parses_sizes() {

@@ -73,7 +73,7 @@ function fmtSize(b) {
 
 /* ===== text ===== */
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const siteUrl = it => S.summary?.site ? `${S.summary.site}details.php?id=${it.id}&hash_id=${it.hash_id}` : null;
+const siteUrl = it => S.summary?.details_url?.replace("{id}", it.id).replace("{hash_id}", it.hash_id) ?? null;
 const clean = t => t.replace(/\s*@[A-Za-z]+\s*$/, ""); // drop the site tag at the end
 const code = it => (it.title.match(/^[A-Z0-9]{2,}-\d+/) || [clean(it.title).split(/\s+/).slice(0, 3).join(" ")])[0];
 const grad = it => `linear-gradient(160deg,hsl(${HUE[it.category] ?? 0} 45% 38%),hsl(${((HUE[it.category] ?? 0) + 40) % 360} 35% 18%))`;

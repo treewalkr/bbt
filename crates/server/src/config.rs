@@ -3,17 +3,18 @@
 
 use crate::store::Store;
 use crate::sync::{self, Outcome, Tracker};
-use crate::tracker::{self, Client, Credentials};
+use crate::tracker::{self, Client, Credentials, Site};
 use anyhow::{Context, Result};
 use std::time::Duration;
 
-/// Minimum gap between any two requests to tracker.
+/// Minimum gap between any two requests to the tracker.
 pub const REQUEST_GAP: Duration = Duration::from_secs(3);
 
 pub struct Config {
     pub db_path: String,
     pub base_url: String,
     pub creds: Credentials,
+    pub site: Site,
     /// `TRACKER_DEVICE_ID`, if set. Otherwise the stored or a newly generated id is used.
     pub device_id: Option<String>,
 }
@@ -27,8 +28,25 @@ impl Config {
                 username: required("TRACKER_USERNAME")?,
                 password: required("TRACKER_PASSWORD")?,
             },
+            site: site_from_env(),
             device_id: std::env::var("TRACKER_DEVICE_ID").ok(),
         })
+    }
+}
+
+/// `TRACKER_LIST_PATH`, `TRACKER_DEVICE_COOKIE` and `TRACKER_HASH_PARAM`, each optional.
+fn site_from_env() -> Site {
+    let d = Site::default();
+    let var = |key: &str, default: String| {
+        std::env::var(key)
+            .ok()
+            .filter(|v| !v.is_empty())
+            .unwrap_or(default)
+    };
+    Site {
+        list_path: var("TRACKER_LIST_PATH", d.list_path),
+        device_cookie: var("TRACKER_DEVICE_COOKIE", d.device_cookie),
+        hash_param: var("TRACKER_HASH_PARAM", d.hash_param),
     }
 }
 
@@ -44,6 +62,7 @@ pub fn client(store: &Store, cfg: &Config) -> Result<Client> {
     let cookies = store.get("cookies")?;
     Ok(Client::new(
         &cfg.base_url,
+        &cfg.site.device_cookie,
         &device_id,
         cookies.as_deref(),
         REQUEST_GAP,
@@ -62,6 +81,7 @@ pub async fn sync_now(
     let mut source = Tracker {
         client: &mut *client,
         creds: &cfg.creds,
+        site: &cfg.site,
     };
     let outcome = sync::run(store, &mut source, max_pages, now).await;
     store.set("cookies", &client.cookie_header())?;

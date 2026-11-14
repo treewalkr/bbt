@@ -33,6 +33,49 @@ pub struct Download {
     pub content_disposition: Option<String>,
 }
 
+/// Names that differ between sites. They live in `.env`, so the code names no site.
+#[derive(Debug, Clone)]
+pub struct Site {
+    /// Torrent list page, e.g. `browse.php`.
+    pub list_path: String,
+    /// Cookie that carries the device id.
+    pub device_cookie: String,
+    /// Details-page query parameter that goes with `id`.
+    pub hash_param: String,
+}
+
+impl Default for Site {
+    fn default() -> Self {
+        Self {
+            list_path: "browse.php".into(),
+            device_cookie: "did".into(),
+            hash_param: "hash_id".into(),
+        }
+    }
+}
+
+impl Site {
+    /// List page `n` (0 = newest).
+    pub fn list_page(&self, n: u32) -> String {
+        if n == 0 {
+            self.list_path.clone()
+        } else {
+            format!("{}?page={n}", self.list_path)
+        }
+    }
+
+    pub fn details_page(&self, id: u64, hash_id: u64) -> String {
+        self.details_template()
+            .replace("{id}", &id.to_string())
+            .replace("{hash_id}", &hash_id.to_string())
+    }
+
+    /// Details link with `{id}` and `{hash_id}` placeholders (the UI fills them in).
+    pub fn details_template(&self) -> String {
+        format!("details.php?id={{id}}&{}={{hash_id}}", self.hash_param)
+    }
+}
+
 pub struct Credentials {
     pub username: String,
     pub password: String,
@@ -41,6 +84,7 @@ pub struct Credentials {
 pub struct Client {
     http: reqwest::Client,
     base: String,
+    device_cookie: String,
     device_id: String,
     cookies: BTreeMap<String, String>,
     min_gap: Duration,
@@ -53,6 +97,7 @@ impl Client {
     /// Every request waits until at least `min_gap` has passed since the last one.
     pub fn new(
         base: &str,
+        device_cookie: &str,
         device_id: &str,
         saved_cookies: Option<&str>,
         min_gap: Duration,
@@ -62,10 +107,11 @@ impl Client {
             .timeout(Duration::from_secs(30))
             .build()?;
         let mut cookies = saved_cookies.map(parse_cookie_header).unwrap_or_default();
-        cookies.insert("did".into(), device_id.into());
+        cookies.insert(device_cookie.into(), device_id.into());
         Ok(Self {
             http,
             base: base.trim_end_matches('/').to_string() + "/",
+            device_cookie: device_cookie.into(),
             device_id: device_id.into(),
             cookies,
             min_gap,
@@ -93,7 +139,8 @@ impl Client {
     }
 
     pub async fn login(&mut self, creds: &Credentials) -> Result<()> {
-        self.cookies.retain(|k, _| k == "did");
+        let keep = self.device_cookie.clone();
+        self.cookies.retain(|k, _| *k == keep);
         let page = self.send(self.request_get("login.php")).await?;
         if !page.status().is_success() {
             return Err(Error::LoginFailed(format!(
@@ -295,6 +342,7 @@ mod tests {
     fn round_trips_cookie_header() {
         let c = Client::new(
             "https://example.org/",
+            "did",
             "dev",
             Some("uid=1; pass=abc"),
             Duration::ZERO,
@@ -307,7 +355,7 @@ mod tests {
 
     #[test]
     fn no_session_without_uid_cookie() {
-        let c = Client::new("https://example.org/", "dev", None, Duration::ZERO).unwrap();
+        let c = Client::new("https://example.org/", "did", "dev", None, Duration::ZERO).unwrap();
         assert!(!c.has_session());
     }
 
@@ -327,7 +375,15 @@ mod tests {
 
     #[test]
     fn builds_urls() {
-        let c = Client::new("https://example.org", "d", None, Duration::ZERO).unwrap();
+        let c = Client::new("https://example.org", "did", "d", None, Duration::ZERO).unwrap();
         assert_eq!(c.url("/browse.php"), "https://example.org/browse.php");
+    }
+
+    #[test]
+    fn builds_site_paths() {
+        let site = Site::default();
+        assert_eq!(site.list_page(0), "browse.php");
+        assert_eq!(site.list_page(3), "browse.php?page=3");
+        assert_eq!(site.details_page(7, 9), "details.php?id=7&hash_id=9");
     }
 }

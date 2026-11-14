@@ -3,7 +3,7 @@
 //! cooldown between syncs, and stop-on-anything-odd.
 
 use crate::store::{Store, SyncRun};
-use crate::tracker::{self, Client, Credentials};
+use crate::tracker::{self, Client, Credentials, Site};
 use anyhow::Result;
 use bbt_domain::{ListPage, parse_list_page};
 
@@ -81,16 +81,15 @@ pub trait PageSource {
 pub struct Tracker<'a> {
     pub client: &'a mut Client,
     pub creds: &'a Credentials,
+    pub site: &'a Site,
 }
 
 impl PageSource for Tracker<'_> {
     async fn fetch_page(&mut self, n: u32) -> tracker::Result<ListPage> {
-        let path = if n == 0 {
-            "browse.php".to_string()
-        } else {
-            format!("browse.php?page={n}")
-        };
-        let html = self.client.fetch_html(&path, self.creds).await?;
+        let html = self
+            .client
+            .fetch_html(&self.site.list_page(n), self.creds)
+            .await?;
         Ok(parse_list_page(&html))
     }
 }
