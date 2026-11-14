@@ -257,6 +257,7 @@ function shotsNote(id) {
 function renderDrawer() {
   const it = S.items.find(i => i.id === S.drawer);
   if (!it) return closeDrawer();
+  const hadFocus = $("#drawer").contains(document.activeElement); // re-rendering would drop it
   const d = detailsCache.get(it.id);
   const shots = !d ? shotsNote(it.id)
     : d.error ? `<p class="err" title="${esc(d.error)}">Couldn't get screenshots from the tracker${/disabled/.test(d.error) ? " because tracker access is off (check .env)" : /not in the database/.test(d.error) ? " because this torrent is no longer in bbt" : ""}. <button class="linkbtn" data-act="retry">Try again</button></p>`
@@ -271,6 +272,7 @@ function renderDrawer() {
   <div class="states" role="group" aria-label="Sort into">${[["", {label:"New", key:"0", c:"var(--new)"}], ...Object.entries(MARKS)].map(([k, m]) => `<button data-set="${k}" style="--c:${m.c}" aria-pressed="${(it.mark ?? "") === k}"><kbd>${m.key}</kbd>${m.label}</button>`).join("")}</div>
   <div class="acts"><button class="primary" data-act="download" ${S.downloading ? "disabled" : ""}>${S.downloading ? "Downloading…" : "Download .torrent"}</button>${siteUrl(it) ? `<a href="${siteUrl(it)}" target="_blank" rel="noreferrer">Open on the tracker</a>` : ""}</div>
   <p class="note">Download fetches a fresh link from tracker and marks the torrent Downloaded.</p>`;
+  if (hadFocus) $("#drawerIn h4").focus();
 }
 function openDrawer(id, {delay = 0, focus = false} = {}) {
   S.drawer = id; $("#drawer").classList.add("open");
