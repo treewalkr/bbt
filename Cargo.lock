@@ -80,6 +80,7 @@ dependencies = [
  "reqwest",
  "rusqlite",
  "sha2",
+ "thiserror",
  "tokio",
 ]
 
