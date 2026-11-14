@@ -1,4 +1,22 @@
+# Build output
 /target
+
+# Secrets and site-specific settings: keep only the example
 .env
+.env.*
+!.env.example
+
+# Local data
 *.db
 *.db-*
+*.torrent
+*.bundle
+
+# Local design work
+.prototypes/
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
