@@ -18,6 +18,6 @@ COPY --from=build /usr/local/bin/bbt-server /usr/local/bin/bbt-server
 USER bbt
 ENV BBT_DB=/data/bbt.db
 VOLUME /data
-EXPOSE 4781
+EXPOSE 24781
 # 0.0.0.0 inside the container only; compose publishes the port on the host's loopback.
 CMD ["bbt-server", "serve", "--host", "0.0.0.0"]

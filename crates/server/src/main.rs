@@ -5,7 +5,7 @@ use bbt_server::store::Store;
 use bbt_server::sync::{HARD_MAX_PAGES, Outcome};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
-const USAGE: &str = "usage:\n  bbt-server sync [--max-pages N]   (N is 1 to 12, default 12)\n  bbt-server serve [--port N] [--host IP]\n    default port 4781; default host is loopback only (127.0.0.1 and ::1).\n    --host 0.0.0.0 listens on every address: only inside a container.";
+const USAGE: &str = "usage:\n  bbt-server sync [--max-pages N]   (N is 1 to 12, default 12)\n  bbt-server serve [--port N] [--host IP]\n    default port 24781; default host is loopback only (127.0.0.1 and ::1).\n    --host 0.0.0.0 listens on every address: only inside a container.";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -55,7 +55,7 @@ async fn sync_cmd(args: &[String]) -> Result<()> {
 }
 
 async fn serve_cmd(args: &[String]) -> Result<()> {
-    let (mut port, mut host): (u16, Option<IpAddr>) = (4781, None);
+    let (mut port, mut host): (u16, Option<IpAddr>) = (24781, None);
     let mut rest = args.iter();
     while let Some(flag) = rest.next() {
         let value = rest.next().context(USAGE)?;
