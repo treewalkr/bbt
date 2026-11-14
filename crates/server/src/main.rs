@@ -3,9 +3,9 @@ use bbt_server::api::{self, AppState};
 use bbt_server::config::{self, Config};
 use bbt_server::store::Store;
 use bbt_server::sync::{HARD_MAX_PAGES, Outcome};
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
-const USAGE: &str = "usage:\n  bbt-server sync [--max-pages N]   (N is 1 to 12, default 12)\n  bbt-server serve [--port N]       (default 4781, localhost only)";
+const USAGE: &str = "usage:\n  bbt-server sync [--max-pages N]   (N is 1 to 12, default 12)\n  bbt-server serve [--port N] [--host IP]\n    default port 4781; default host is loopback only (127.0.0.1 and ::1).\n    --host 0.0.0.0 listens on every address: only inside a container.";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -55,20 +55,35 @@ async fn sync_cmd(args: &[String]) -> Result<()> {
 }
 
 async fn serve_cmd(args: &[String]) -> Result<()> {
-    let port: u16 = match args {
-        [] => 4781,
-        [flag, n] if flag == "--port" => n.parse().context(USAGE)?,
-        _ => bail!(USAGE),
-    };
+    let (mut port, mut host): (u16, Option<IpAddr>) = (4781, None);
+    let mut rest = args.iter();
+    while let Some(flag) = rest.next() {
+        let value = rest.next().context(USAGE)?;
+        match flag.as_str() {
+            "--port" => port = value.parse().context(USAGE)?,
+            // An IP address, never a name, so it binds exactly what was asked.
+            "--host" => host = Some(value.parse().context(USAGE)?),
+            _ => bail!(USAGE),
+        }
+    }
     let cfg = Config::from_env()?;
     let state = AppState::new(&cfg.db_path.clone(), Some(cfg))?;
+    let app = api::router(state);
+    if let Some(ip) = host {
+        let addr = SocketAddr::from((ip, port));
+        let listener = tokio::net::TcpListener::bind(addr)
+            .await
+            .with_context(|| format!("binding {addr}"))?;
+        println!("bbt listening on {addr}");
+        axum::serve(listener, app).await?;
+        return Ok(());
+    }
     // Loopback addresses only, never a name: `localhost` resolves to both of these.
     let v4 = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
     let v6 = SocketAddr::from((Ipv6Addr::LOCALHOST, port));
     let listener = tokio::net::TcpListener::bind(v4)
         .await
         .with_context(|| format!("binding {v4}"))?;
-    let app = api::router(state);
     println!("bbt running at http://localhost:{port}");
     match tokio::net::TcpListener::bind(v6).await {
         Ok(listener6) => {
