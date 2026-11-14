@@ -3,6 +3,7 @@ use bbt_server::api::{self, AppState};
 use bbt_server::config::{self, Config};
 use bbt_server::store::Store;
 use bbt_server::sync::{HARD_MAX_PAGES, Outcome};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 
 const USAGE: &str = "usage:\n  bbt-server sync [--max-pages N]   (N is 1 to 12, default 12)\n  bbt-server serve [--port N]       (default 4781, localhost only)";
 
@@ -62,8 +63,8 @@ async fn serve_cmd(args: &[String]) -> Result<()> {
     let cfg = Config::from_env()?;
     let state = AppState::new(&cfg.db_path.clone(), Some(cfg))?;
     // Loopback addresses only, never a name: `localhost` resolves to both of these.
-    let v4 = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-    let v6 = std::net::SocketAddr::from((std::net::Ipv6Addr::LOCALHOST, port));
+    let v4 = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
+    let v6 = SocketAddr::from((Ipv6Addr::LOCALHOST, port));
     let listener = tokio::net::TcpListener::bind(v4)
         .await
         .with_context(|| format!("binding {v4}"))?;
