@@ -34,7 +34,8 @@ impl Config {
     }
 }
 
-/// `TRACKER_LIST_PATH`, `TRACKER_DEVICE_COOKIE` and `TRACKER_HASH_PARAM`, each optional.
+/// `TRACKER_LIST_PATH`, `TRACKER_DEVICE_COOKIE`, `TRACKER_HASH_PARAM` and
+/// `TRACKER_CATEGORIES`, each optional.
 fn site_from_env() -> Site {
     let d = Site::default();
     let var = |key: &str, default: String| {
@@ -47,7 +48,19 @@ fn site_from_env() -> Site {
         list_path: var("TRACKER_LIST_PATH", d.list_path),
         device_cookie: var("TRACKER_DEVICE_COOKIE", d.device_cookie),
         hash_param: var("TRACKER_HASH_PARAM", d.hash_param),
+        categories: parse_categories(&var("TRACKER_CATEGORIES", String::new())),
     }
+}
+
+/// `"1:Movies,2:Series"` → `[(1, "Movies"), (2, "Series")]`. Bad entries are skipped.
+fn parse_categories(s: &str) -> Vec<(u32, String)> {
+    s.split(',')
+        .filter_map(|entry| {
+            let (id, name) = entry.split_once(':')?;
+            let name = name.trim();
+            Some((id.trim().parse().ok()?, name.to_string())).filter(|_| !name.is_empty())
+        })
+        .collect()
 }
 
 /// A finished live sync and how many HTTP requests it made.
@@ -112,6 +125,15 @@ fn required(key: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_categories() {
+        assert_eq!(
+            parse_categories("1:Movies, 2 : TV Series,bad,3:,x:Y"),
+            vec![(1, "Movies".to_string()), (2, "TV Series".to_string())]
+        );
+        assert!(parse_categories("").is_empty());
+    }
 
     #[test]
     fn device_id_is_stable() {

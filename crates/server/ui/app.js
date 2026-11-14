@@ -1,8 +1,15 @@
 "use strict";
 
 /* ===== constants ===== */
-const CATS = {1:"Category 1",2:"Category 2",3:"Category 3",4:"Category 4",5:"Category 5",6:"Category 6",7:"Category 7",8:"Category 8",10:"Category 10",11:"Category 11",12:"Category 12",13:"Category 13"};
-const HUE = {1:330,2:280,3:350,4:10,5:210,6:30,7:45,8:190,10:260,11:160,12:300,13:120};
+// Category names come from TRACKER_CATEGORIES in .env (via /api/summary).
+// Without it the category panel and tags stay hidden.
+let CATS = {};
+const catsOn = () => Object.keys(CATS).length > 0;
+const hue = id => (Number(id) * 137) % 360;
+function setCats(list) {
+  CATS = Object.fromEntries((list ?? []).map(c => [c.id, c.name]));
+  $("#cats").hidden = !catsOn();
+}
 const MARKS = {
   viewed:         {label:"Viewed",         key:"1", c:"#B7ABC4",        hint:"Seen it, skip next time"},
   view_later:     {label:"View later",     key:"2", c:"var(--watch)",   hint:"Look at it properly later"},
@@ -76,7 +83,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt
 const siteUrl = it => S.summary?.details_url?.replace("{id}", it.id).replace("{hash_id}", it.hash_id) ?? null;
 const clean = t => t.replace(/\s*@[A-Za-z]+\s*$/, ""); // drop the site tag at the end
 const code = it => (it.title.match(/^[A-Z0-9]{2,}-\d+/) || [clean(it.title).split(/\s+/).slice(0, 3).join(" ")])[0];
-const grad = it => `linear-gradient(160deg,hsl(${HUE[it.category] ?? 0} 45% 38%),hsl(${((HUE[it.category] ?? 0) + 40) % 360} 35% 18%))`;
+const grad = it => `linear-gradient(160deg,hsl(${hue(it.category)} 45% 38%),hsl(${(hue(it.category) + 40) % 360} 35% 18%))`;
 function poster(it) {
   const img = it.poster_url ? `<img src="${esc(it.poster_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
   return `<div class="poster" style="--g:${grad(it)}"><span>${esc(code(it))}</span>${img}</div>`;
@@ -86,7 +93,7 @@ function poster(it) {
 function listQuery() {
   const p = new URLSearchParams({view: S.view, sort: S.sort, limit: "5000"});
   if (S.view === "new" || S.view === "all") p.set("from", cutoff());
-  if (S.cats.size !== Object.keys(CATS).length) p.set("cats", [...S.cats].join(",") || "0");
+  if (catsOn() && S.cats.size !== Object.keys(CATS).length) p.set("cats", [...S.cats].join(",") || "0");
   if (S.q) p.set("q", S.q);
   if (S.free) p.set("free", "true");
   if (S.sticky) p.set("sticky", "true");
@@ -126,7 +133,7 @@ function groups() {
 /* ===== render ===== */
 function tags(it) {
   const mark = S.view === "all" && it.mark ? `<span class="tag state" style="--state:${MARKS[it.mark].c}">${MARKS[it.mark].label}</span>` : "";
-  return `<span class="tag">${CATS[it.category] ?? it.category}</span>${it.sticky ? '<span class="tag sticky">Sticky</span>' : ""}${it.free ? '<span class="tag free">Free</span>' : ""}${it.multiplier ? `<span class="tag free">${esc(it.multiplier)} up</span>` : ""}${mark}${it.rating ? `<span class="stars" title="Your rating: ${it.rating} of 5">★${it.rating}</span>` : ""}<span>${esc(it.uploader ?? "")}</span>`;
+  return `${catsOn() ? `<span class="tag">${esc(CATS[it.category] ?? `Category ${it.category}`)}</span>` : ""}${it.sticky ? '<span class="tag sticky">Sticky</span>' : ""}${it.free ? '<span class="tag free">Free</span>' : ""}${it.multiplier ? `<span class="tag free">${esc(it.multiplier)} up</span>` : ""}${mark}${it.rating ? `<span class="stars" title="Your rating: ${it.rating} of 5">★${it.rating}</span>` : ""}<span>${esc(it.uploader ?? "")}</span>`;
 }
 const stateOf = it => it.mark ?? "new";
 const stateAttr = it => ({viewed:"viewed", view_later:"watch", download_later:"get", downloaded:"got", new:"new"})[stateOf(it)];
@@ -156,7 +163,7 @@ function render() {
     const total = S.summary?.counts.total ?? 0;
     const label = VIEWS.find(v => v[0] === S.view)[1];
     let msg;
-    if (!S.cats.size) msg = `<h3>No categories selected</h3><p>Tick at least one category on the left to see torrents.</p><button data-act="allcats">Select all categories</button>`;
+    if (catsOn() && !S.cats.size) msg = `<h3>No categories selected</h3><p>Tick at least one category on the left to see torrents.</p><button data-act="allcats">Select all categories</button>`;
     else if (!total) msg = `<h3>No torrents yet</h3><p>Sync to fetch the latest uploads from tracker.</p><button data-act="sync">Sync now</button>`;
     else if (S.view === "new") msg = `<h3>All caught up</h3><p>Nothing new ${S.range === "last" ? "since your last visit" : "in this date range"}${S.q || S.free ? " that matches your filters" : ""}. Sync to check tracker for new uploads.</p><button data-act="sync">Sync now</button>`;
     else msg = `<h3>Nothing in ${label}</h3><p>${MARKS[S.view] ? `Press ${MARKS[S.view].key} on a torrent to add it here.` : "Try a wider date range."}</p>`;
@@ -190,7 +197,7 @@ function renderNav() {
   $("#views").innerHTML = "<h2>Lists</h2>" + VIEWS.map(([k, l, col]) => `<button data-view="${k}" aria-current="${S.view === k}" style="--c:${col}"><i class="dot"></i>${l}<span class="n">${n(k)}</span></button>`).join("");
   const byCat = c?.new_by_category ?? {};
   const all = S.cats.size === Object.keys(CATS).length, none = S.cats.size === 0;
-  $("#cats").innerHTML = `<div class="cats-head"><h2>Categories</h2><button data-cats="all" ${all ? "disabled" : ""}>All</button><button data-cats="none" ${none ? "disabled" : ""}>None</button></div>` + Object.entries(CATS).map(([k, l]) => `<label><input type="checkbox" data-cat="${k}" ${S.cats.has(+k) ? "checked" : ""}><span>${l}</span><span class="n">${byCat[k] || ""}</span></label>`).join("");
+  $("#cats").innerHTML = `<div class="cats-head"><h2>Categories</h2><button data-cats="all" ${all ? "disabled" : ""}>All</button><button data-cats="none" ${none ? "disabled" : ""}>None</button></div>` + Object.entries(CATS).map(([k, l]) => `<label><input type="checkbox" data-cat="${k}" ${S.cats.has(+k) ? "checked" : ""}><span>${esc(l)}</span><span class="n">${byCat[k] || ""}</span></label>`).join("");
 }
 function renderBins() {
   const c = S.summary?.counts ?? {};
@@ -219,7 +226,7 @@ function renderDrawer() {
     : d.error ? `<p class="err">Couldn't load screenshots: ${esc(d.error)}</p>`
     : d.images.length ? `<div class="shots">${d.images.map((u, i) => `<a href="${esc(u)}" data-shot="${i}" aria-label="View screenshot ${i + 1} of ${d.images.length}"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`).join("")}</div>`
     : `<p class="note">No screenshots on tracker for this torrent.</p>`;
-  $("#drawerIn").innerHTML = `<header><span>${CATS[it.category] ?? it.category} <span style="color:var(--faint)">#${it.id}</span></span><button class="close" aria-label="Close details" data-act="close">×</button></header>
+  $("#drawerIn").innerHTML = `<header><span>${catsOn() ? esc(CATS[it.category] ?? `Category ${it.category}`) + " " : ""}<span style="color:var(--faint)">#${it.id}</span></span><button class="close" aria-label="Close details" data-act="close">×</button></header>
   <div class="big">${poster(it)}<div style="display:flex;flex-direction:column;gap:10px"><h4>${esc(clean(it.title))}</h4>
   <dl><dt>Uploaded</dt><dd>${fmtWhen(it.uploaded_at)}</dd><dt>By</dt><dd>${esc(it.uploader ?? "Anonymous")}</dd><dt>Size</dt><dd>${fmtSize(it.size_bytes)}, ${it.files} file${it.files === 1 ? "" : "s"}</dd></dl></div></div>
   <dl><dt>Seeding</dt><dd>${it.seeders}</dd><dt>Leeching</dt><dd>${it.leechers}</dd><dt>Snatched</dt><dd>${it.snatched}</dd><dt>Free download</dt><dd>${it.free ? esc(it.free) : "No"}</dd><dt>Counts updated</dt><dd>${fmtAgo(it.stats_at)}</dd></dl>
@@ -569,6 +576,8 @@ document.addEventListener("keydown", e => {
     sessionStorage.setItem("bbt_last_visit", lv);
   }
   S.lastVisit = lv ? Number(lv) : null;
+  try { setCats((await api("GET", `/api/summary?from=${cutoff()}`)).categories); } catch { setCats([]); }
+  S.cats = loadCats();
   // The database copy wins: it survives browser storage being cleared.
   try {
     const prefs = await api("GET", "/api/prefs");

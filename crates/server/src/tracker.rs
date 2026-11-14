@@ -42,6 +42,8 @@ pub struct Site {
     pub device_cookie: String,
     /// Details-page query parameter that goes with `id`.
     pub hash_param: String,
+    /// Category ids and names, in display order. Empty hides categories in the UI.
+    pub categories: Vec<(u32, String)>,
 }
 
 impl Default for Site {
@@ -50,6 +52,7 @@ impl Default for Site {
             list_path: "browse.php".into(),
             device_cookie: "did".into(),
             hash_param: "hash_id".into(),
+            categories: Vec::new(),
         }
     }
 }

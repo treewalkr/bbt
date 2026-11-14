@@ -127,6 +127,13 @@ async fn summary(
         "last_sync": store.last_sync()?,
         "last_visit": store.get("last_visit")?.and_then(|v| v.parse::<i64>().ok()),
         "coverage_from": coverage_from(&store)?,
+        "categories": s.config.as_ref().map_or(Vec::new(), |c| {
+            c.site
+                .categories
+                .iter()
+                .map(|(id, name)| json!({"id": id, "name": name}))
+                .collect()
+        }),
         // `{id}` and `{hash_id}` are filled in by the UI.
         "details_url": s.config.as_ref().map(|c| format!(
             "{}/{}",
