@@ -21,6 +21,7 @@ const VIEWS = [
   ["downloaded","Downloaded","var(--got)"],["viewed","Viewed","#B7ABC4"],["all","Everything","var(--faint)"],
 ];
 const DAY = 86400, ICT = 7 * 3600;
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /* ===== state ===== */
 function loadCats() {
@@ -153,8 +154,9 @@ function cardHTML(it) {
   ${poster(it)}<i class="flag"></i><input class="sel" type="checkbox" aria-label="Select" ${S.sel.has(it.id) ? "checked" : ""}>
   <div class="title">${esc(clean(it.title))}</div><div class="tags">${it.rating ? `<span class="stars">★${it.rating}</span>` : ""}<span>${fmtSize(it.size_bytes)}</span><span>${it.seeders} seeding</span></div></div>`;
 }
+let shown = [];
 function render() {
-  const gs = groups(); flat = gs.flatMap(g => g.items);
+  const gs = groups(); shown = gs; flat = gs.flatMap(g => g.items);
   if (S.focus && !flat.some(i => i.id === S.focus)) S.focus = null;
   if (!S.focus && flat.length) S.focus = flat[0].id;
   const byDay = S.sort === "new";
@@ -169,14 +171,13 @@ function render() {
     else msg = `<h3>Nothing in ${label}</h3><p>${MARKS[S.view] ? `Press ${MARKS[S.view].key} on a torrent to add it here.` : "Try a wider date range."}</p>`;
     main.innerHTML = `<div class="empty">${msg}</div>`;
   } else {
-    const head = S.grid ? "" : `<div class="colhead"><span></span><span></span><span></span><span class="l">${flat.length} torrents${flat.length >= 5000 ? " (first 5000)" : ""}</span><span>Size</span><span class="c-seed">Seeds</span><span class="c-leech">Leech</span><span class="c-snatch">Snatched</span><span class="c-time">${byDay ? "Time" : "Age"}</span></div>`;
+    const head = S.grid ? "" : `<div class="colhead"><span></span><span></span><span></span><span class="l">${plural(flat.length, "torrent")}${flat.length >= 5000 ? " (first 5000)" : ""}</span><span>Size</span><span class="c-seed">Seeds</span><span class="c-leech">Leech</span><span class="c-snatch">Snatched</span><span class="c-time">${byDay ? "Time" : "Age"}</span></div>`;
     main.classList.toggle("has-colhead", !S.grid);
     main.innerHTML = head + gs.map(g => {
       const nNew = g.items.filter(i => !i.mark).length;
-      const canBulk = g.items.some(i => i.mark !== "viewed");
       return `<section class="group" data-g="${g.key}"><div class="ghead"><h3>${esc(g.label)}</h3>
-      <span class="sub">${g.items.length} torrents${nNew && S.view !== "new" ? `, <b>${nNew} new</b>` : ""}</span>
-      <span class="act">${canBulk ? `<button data-bulk>Mark ${byDay ? "day" : "all"} viewed</button>` : ""}</span></div>
+      <span class="sub">${plural(g.items.length, "torrent")}${nNew && S.view !== "new" ? `, <b>${nNew} new</b>` : ""}</span>
+      <span class="act">${bulkable() && nNew ? bulkButton(g.key, nNew) : ""}</span></div>
       ${S.grid ? `<div class="cards" role="listbox">${g.items.map(cardHTML).join("")}</div>` : `<div role="listbox">${g.items.map(it => rowHTML(it, byDay)).join("")}</div>`}</section>`;
     }).join("");
   }
@@ -350,7 +351,7 @@ async function setMark(ids, mark, {advance = false} = {}) {
   if (nodes.length && nodes.length < 60 && !matchMedia("(prefers-reduced-motion: reduce)").matches) { nodes.forEach(n => n.classList.add("leaving")); setTimeout(apply, 260); }
   else apply();
   const where = mark ? MARKS[mark].label : "New";
-  toast(`${ids.length === 1 ? "1 torrent" : ids.length + " torrents"} moved to ${where}`);
+  toast(`${plural(ids.length, "torrent")} moved to ${where}`);
 }
 async function undo() {
   if (!S.undo?.previous.length) return;
@@ -382,9 +383,37 @@ function move(d) {
   renderTarget();
   if (S.drawer) openDrawer(n.id);
 }
-function groupIds(id) {
-  const g = main.querySelector(`[data-id="${id}"]`)?.closest(".group");
-  return g ? [...g.querySelectorAll("[data-id]")].map(e => +e.dataset.id) : [];
+/* ===== bulk "mark viewed" =====
+   Only unmarked torrents, and only in the lists that hold them (New, Everything),
+   so a curated list can never be swept into Viewed. Big batches need a second press. */
+const BULK_CONFIRM = 20;
+let bulkArm = null; // {g, timer}
+const bulkable = () => S.view === "new" || S.view === "all";
+const bulkIdsOf = g => shown.find(x => x.key === g)?.items.filter(i => !i.mark).map(i => i.id) ?? [];
+const groupOf = id => shown.find(g => g.items.some(i => i.id === id))?.key;
+function bulkButton(g, n) {
+  const armed = bulkArm?.g === g;
+  return `<button data-bulk="${esc(g)}" class="${armed ? "armed" : ""}">${armed ? `Confirm: mark ${n} viewed` : `Mark ${n} viewed`}</button>`;
+}
+function disarmBulk() {
+  if (!bulkArm) return;
+  const {g} = bulkArm; clearTimeout(bulkArm.timer); bulkArm = null;
+  const b = main.querySelector(`[data-bulk="${CSS.escape(g)}"]`);
+  if (b) b.outerHTML = bulkButton(g, bulkIdsOf(g).length);
+}
+function bulkViewed(g) {
+  if (!bulkable() || g == null) return;
+  const ids = bulkIdsOf(g);
+  if (!ids.length) return;
+  if (ids.length > BULK_CONFIRM && bulkArm?.g !== g) {
+    disarmBulk();
+    bulkArm = {g, timer: setTimeout(disarmBulk, 5000)};
+    const b = main.querySelector(`[data-bulk="${CSS.escape(g)}"]`);
+    if (b) b.outerHTML = bulkButton(g, ids.length);
+    return toast(`Move ${plural(ids.length, "torrent")} to Viewed? Press Shift 1 again or click Confirm.`, false);
+  }
+  disarmBulk();
+  setMark(ids, "viewed");
 }
 
 /* ===== older pages (Everything, scroll to the end) ===== */
@@ -472,7 +501,7 @@ main.addEventListener("click", e => {
   if (e.target.closest("[data-act=sync]")) return doSync();
   if (e.target.closest("[data-act=allcats]")) { S.cats = new Set(Object.keys(CATS).map(Number)); saveCats(); return load(); }
   if (e.target.closest("[data-act=older]")) { O.error = false; return loadOlder(); }
-  if (e.target.closest("[data-bulk]")) return setMark([...e.target.closest(".group").querySelectorAll("[data-id]")].map(x => +x.dataset.id), "viewed");
+  const bulk = e.target.closest("[data-bulk]"); if (bulk) return bulkViewed(bulk.dataset.bulk);
   const r = e.target.closest("[data-id]"); if (!r) return;
   const id = +r.dataset.id;
   if (e.target.classList.contains("sel")) { S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); renderTarget(); return; }
@@ -541,7 +570,7 @@ document.addEventListener("keydown", e => {
   else if (k === "k" || k === "ArrowUp") { e.preventDefault(); move(k === "ArrowUp" ? -step : -1); }
   else if (S.grid && k === "ArrowRight") move(1);
   else if (S.grid && k === "ArrowLeft") move(-1);
-  else if (k === "!" || (e.shiftKey && e.code === "Digit1")) setMark(groupIds(S.focus), "viewed");
+  else if (k === "!" || (e.shiftKey && e.code === "Digit1")) bulkViewed(groupOf(S.focus));
   else if (k === "1") setMark(targets(), "viewed", {advance:true});
   else if (k === "2") setMark(targets(), "view_later", {advance:true});
   else if (k === "3") setMark(targets(), "download_later", {advance:true});
@@ -549,7 +578,7 @@ document.addEventListener("keydown", e => {
   else if (k === "0") setMark(targets(), null);
   else if (k === "x" && S.focus) { const id = S.focus; S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); const c = main.querySelector(`[data-id="${id}"] .sel`); if (c) c.checked = S.sel.has(id); renderTarget(); }
   else if (k === "Enter" && S.focus) openDrawer(S.focus);
-  else if (k === "Escape") { closeDrawer(); if (S.sel.size) { S.sel.clear(); render(); } }
+  else if (k === "Escape") { disarmBulk(); closeDrawer(); if (S.sel.size) { S.sel.clear(); render(); } }
   else if (k === "o" && S.focus) { const it = S.items.find(i => i.id === S.focus); if (it && siteUrl(it)) window.open(siteUrl(it), "_blank", "noreferrer"); }
   else if (k === "u") undo();
   else if (k === "b") setBlur(!document.body.classList.contains("blur"));
