@@ -195,6 +195,15 @@ impl Store {
         Ok(())
     }
 
+    /// Non-sticky torrents uploaded at or after `t`.
+    pub fn count_uploaded_since(&self, t: i64) -> Result<u64> {
+        Ok(self.conn.query_row(
+            "SELECT COUNT(*) FROM torrents WHERE sticky = 0 AND uploaded_at >= ?1",
+            [t],
+            |r| r.get(0),
+        )?)
+    }
+
     pub fn torrent_count(&self) -> Result<u64> {
         Ok(self
             .conn

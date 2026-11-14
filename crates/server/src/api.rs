@@ -1,6 +1,7 @@
 //! JSON API for the local inbox UI. Binds to localhost only (see `serve`).
 
 use crate::config::{self, Config};
+use crate::older::{self, Fit};
 use crate::queries::{Filter, Mark, Sort, View};
 use crate::store::Store;
 use crate::sync::{self, HARD_MAX_PAGES, Outcome};
@@ -10,7 +11,7 @@ use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use bbt_domain::{Details, parse_details_page};
+use bbt_domain::{Details, parse_details_page, parse_list_page};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -49,6 +50,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/marks", post(set_marks))
         .route("/api/visit", post(visit))
         .route("/api/sync", get(sync_status).post(run_sync))
+        .route("/api/older", post(load_older))
         .route("/api/torrents/{id}/details", get(details))
         .route("/api/torrents/{id}/download", get(download))
         .with_state(state)
@@ -265,6 +267,88 @@ async fn run_sync(State(s): State<Arc<AppState>>) -> ApiResult<Value> {
             "complete": r.stop == sync::Stop::ReachedCutoff,
         }),
     }))
+}
+
+/// Load exactly one older tracker list page (the user scrolled to the end).
+async fn load_older(State(s): State<Arc<AppState>>) -> ApiResult<Value> {
+    let Some(cfg) = s.config.as_ref() else {
+        return Err(ApiError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "tracker access is disabled".into(),
+        ));
+    };
+    let Ok(_guard) = s.sync_lock.try_lock() else {
+        return Err(ApiError(StatusCode::CONFLICT, "a sync is running".into()));
+    };
+    let now = chrono::Utc::now().timestamp();
+    let today = (chrono::Utc::now() + chrono::Duration::hours(7))
+        .format("%Y-%m-%d")
+        .to_string();
+
+    let (frontier, cursor) = {
+        let store = s.store.lock().await;
+        let left = older::budget_left(store.get("older_budget")?.as_deref(), &today);
+        if left == 0 {
+            return Ok(Json(json!({ "status": "budget", "budget_left": 0 })));
+        }
+        let Some(frontier) = store.summary(None)?.oldest_uploaded_at else {
+            return Err(ApiError(
+                StatusCode::CONFLICT,
+                "sync once before loading older uploads".into(),
+            ));
+        };
+        let cursor = match store.get("older_cursor")?.and_then(|c| c.parse().ok()) {
+            Some(c) => c,
+            None => {
+                let known = store.count_uploaded_since(frontier)?;
+                let last = store.last_sync()?.map_or(now, |r| r.started_at);
+                let rate = known as f64 / (last - frontier).max(3600) as f64;
+                older::initial_cursor(known, rate, now - last)
+            }
+        };
+        (frontier, cursor)
+    };
+
+    let mut client = s.client.lock().await;
+    if client.is_none() {
+        *client = Some(config::client(&*s.store.lock().await, cfg)?);
+    }
+    let client = client.as_mut().expect("client was just set");
+    let path = if cursor == 0 {
+        "browse.php".to_string()
+    } else {
+        format!("browse.php?page={cursor}")
+    };
+    let result = client.fetch_html(&path, &cfg.creds).await;
+
+    let mut store = s.store.lock().await;
+    store.set("cookies", &client.cookie_header())?;
+    let budget = older::budget_after_use(store.get("older_budget")?.as_deref(), &today);
+    store.set("older_budget", &budget)?;
+    let page = parse_list_page(&result?);
+    if page.skipped > page.torrents.len() {
+        return Err(ApiError(
+            StatusCode::BAD_GATEWAY,
+            "tracker page layout not recognised".into(),
+        ));
+    }
+    let Some(fit) = older::classify(&page, frontier) else {
+        return Err(ApiError(
+            StatusCode::BAD_GATEWAY,
+            format!("tracker page {cursor} was empty"),
+        ));
+    };
+    let added = store.upsert_torrents(&page.torrents, now)?;
+    let next = older::next_cursor(cursor, fit, &page, frontier);
+    store.set("older_cursor", &next.to_string())?;
+    Ok(Json(json!({
+        "status": "done",
+        "page": cursor,
+        "added": added,
+        "fit": match fit { Fit::Overlap => "overlap", Fit::Newer => "newer", Fit::Older => "older" },
+        "frontier": store.summary(None)?.oldest_uploaded_at,
+        "budget_left": older::budget_left(Some(&budget), &today),
+    })))
 }
 
 /// Fetch a torrent's details page through the shared client (respects the request gap).
@@ -546,6 +630,13 @@ mod tests {
     #[test]
     fn encodes_filenames() {
         assert_eq!(percent_encode("A b/ไ"), "A%20b%2F%E0%B9%84");
+    }
+
+    #[tokio::test]
+    async fn older_disabled_without_config() {
+        let (app, _dir) = app().await;
+        let (st, _) = call(&app, "POST", "/api/older", None).await;
+        assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]

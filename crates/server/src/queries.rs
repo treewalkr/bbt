@@ -139,7 +139,7 @@ pub struct Summary {
     pub oldest_uploaded_at: Option<i64>,
 }
 
-pub const MAX_LIMIT: u32 = 2000;
+pub const MAX_LIMIT: u32 = 5000;
 
 impl Store {
     pub fn list_torrents(&self, f: &Filter) -> Result<Vec<TorrentRow>> {
