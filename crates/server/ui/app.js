@@ -126,7 +126,7 @@ function groups() {
 /* ===== render ===== */
 function tags(it) {
   const mark = S.view === "all" && it.mark ? `<span class="tag state" style="--state:${MARKS[it.mark].c}">${MARKS[it.mark].label}</span>` : "";
-  return `<span class="tag">${CATS[it.category] ?? it.category}</span>${it.sticky ? '<span class="tag sticky">Sticky</span>' : ""}${it.free ? '<span class="tag free">Free</span>' : ""}${it.multiplier ? `<span class="tag free">${esc(it.multiplier)} up</span>` : ""}${mark}<span>${esc(it.uploader ?? "")}</span>`;
+  return `<span class="tag">${CATS[it.category] ?? it.category}</span>${it.sticky ? '<span class="tag sticky">Sticky</span>' : ""}${it.free ? '<span class="tag free">Free</span>' : ""}${it.multiplier ? `<span class="tag free">${esc(it.multiplier)} up</span>` : ""}${mark}${it.rating ? `<span class="stars" title="Your rating: ${it.rating} of 5">★${it.rating}</span>` : ""}<span>${esc(it.uploader ?? "")}</span>`;
 }
 const stateOf = it => it.mark ?? "new";
 const stateAttr = it => ({viewed:"viewed", view_later:"watch", download_later:"get", downloaded:"got", new:"new"})[stateOf(it)];
@@ -144,7 +144,7 @@ function rowHTML(it, byDay) {
 function cardHTML(it) {
   return `<div class="card${S.focus === it.id ? " focus" : ""}" data-id="${it.id}" data-state="${stateAttr(it)}" role="option">
   ${poster(it)}<i class="flag"></i><input class="sel" type="checkbox" aria-label="Select" ${S.sel.has(it.id) ? "checked" : ""}>
-  <div class="title">${esc(clean(it.title))}</div><div class="tags"><span>${fmtSize(it.size_bytes)}</span><span>${it.seeders} seeding</span></div></div>`;
+  <div class="title">${esc(clean(it.title))}</div><div class="tags">${it.rating ? `<span class="stars">★${it.rating}</span>` : ""}<span>${fmtSize(it.size_bytes)}</span><span>${it.seeders} seeding</span></div></div>`;
 }
 function render() {
   const gs = groups(); flat = gs.flatMap(g => g.items);
@@ -224,6 +224,7 @@ function renderDrawer() {
   <dl><dt>Uploaded</dt><dd>${fmtWhen(it.uploaded_at)}</dd><dt>By</dt><dd>${esc(it.uploader ?? "Anonymous")}</dd><dt>Size</dt><dd>${fmtSize(it.size_bytes)}, ${it.files} file${it.files === 1 ? "" : "s"}</dd></dl></div></div>
   <dl><dt>Seeding</dt><dd>${it.seeders}</dd><dt>Leeching</dt><dd>${it.leechers}</dd><dt>Snatched</dt><dd>${it.snatched}</dd><dt>Free download</dt><dd>${it.free ? esc(it.free) : "No"}</dd><dt>Counts updated</dt><dd>${fmtAgo(it.stats_at)}</dd></dl>
   ${shots}
+  <div class="rate-row"><div class="rate" role="group" aria-label="Your rating">${[5, 4, 3, 2, 1].map(n => `<button data-rate="${n}" class="${it.rating >= n ? "on" : ""}" aria-pressed="${it.rating === n}" aria-label="${n} star${n === 1 ? "" : "s"}">★</button>`).join("")}</div><span class="note">${it.rating ? `${it.rating} of 5. Click it again to clear.` : "Not rated. Press r then 1–5."}</span></div>
   <div class="states">${Object.entries(MARKS).map(([k, m]) => `<button data-set="${k}" style="--c:${m.c}" aria-pressed="${it.mark === k}">${m.label}</button>`).join("")}</div>
   <div class="acts"><button class="primary" data-act="download" ${S.downloading ? "disabled" : ""}>${S.downloading ? "Downloading…" : "Download .torrent"}</button><a href="${SITE}details.php?id=${it.id}&hash_id=${it.hash_id}" target="_blank" rel="noreferrer">Open on tracker</a></div>
   <p class="note">Download fetches a fresh link from tracker and marks the torrent Downloaded.</p>`;
@@ -311,7 +312,7 @@ async function setMark(ids, mark, {advance = false} = {}) {
   let res;
   try { res = await api("POST", "/api/marks", {ids, mark}); }
   catch (e) { toast(`Couldn't save: ${e.message}`, false); return load(); }
-  S.undo = res.previous;
+  S.undo = {kind: "mark", previous: res.previous};
   const nodes = leaving ? ids.map(id => main.querySelector(`[data-id="${id}"]`)).filter(Boolean) : [];
   const apply = () => {
     if (leaving) S.items = S.items.filter(i => !ids.includes(i.id));
@@ -324,11 +325,12 @@ async function setMark(ids, mark, {advance = false} = {}) {
   toast(`${ids.length === 1 ? "1 torrent" : ids.length + " torrents"} moved to ${where}`);
 }
 async function undo() {
-  if (!S.undo?.length) return;
-  const prev = S.undo; S.undo = null;
-  const byMark = new Map();
-  for (const p of prev) { const k = p.mark ?? ""; if (!byMark.has(k)) byMark.set(k, []); byMark.get(k).push(p.id); }
-  try { for (const [m, ids] of byMark) await api("POST", "/api/marks", {ids, mark: m || null}); }
+  if (!S.undo?.previous.length) return;
+  const {kind, previous: prev} = S.undo; S.undo = null;
+  const key = kind === "mark" ? "mark" : "stars";
+  const byValue = new Map();
+  for (const p of prev) { const k = p[key] ?? ""; if (!byValue.has(k)) byValue.set(k, []); byValue.get(k).push(p.id); }
+  try { for (const [v, ids] of byValue) await api("POST", kind === "mark" ? "/api/marks" : "/api/ratings", {ids, [key]: v === "" ? null : v}); }
   catch (e) { toast(`Undo failed: ${e.message}`, false); }
   S.focus = prev[0].id;
   await load(); scrollFocus(); toast("Change undone", false);
@@ -390,6 +392,22 @@ async function loadOlder() {
   await load();
 }
 
+/* ===== ratings ===== */
+async function setRating(ids, stars) {
+  ids = ids.filter(id => S.items.some(i => i.id === id));
+  if (!ids.length) return;
+  let res;
+  try { res = await api("POST", "/api/ratings", {ids, stars}); }
+  catch (e) { return toast(`Couldn't save rating: ${e.message}`, false); }
+  S.undo = {kind: "rating", previous: res.previous};
+  S.items.forEach(i => { if (ids.includes(i.id)) i.rating = stars; });
+  S.sel.clear();
+  if (S.sort === "rating") await load(); else render();
+  const what = ids.length === 1 ? "" : ` ${ids.length} torrents`;
+  toast(stars ? `Rated${what} ${stars} star${stars === 1 ? "" : "s"}` : `Rating cleared${what ? " on" + what : ""}`);
+}
+let rateArmed = 0;
+
 /* ===== sync ===== */
 async function doSync() {
   if (S.syncing) return;
@@ -435,6 +453,8 @@ main.addEventListener("click", e => {
 });
 $("#bins").addEventListener("click", e => { const b = e.target.closest(".bin"); if (b) setMark(targets(), b.dataset.mark, {advance:true}); });
 $("#drawerIn").addEventListener("click", e => {
+  const star = e.target.closest("[data-rate]");
+  if (star) { const it = S.items.find(i => i.id === S.drawer); const n = +star.dataset.rate; return setRating([S.drawer], it?.rating === n ? null : n); }
   const shot = e.target.closest("[data-shot]");
   if (shot) { e.preventDefault(); return openViewer(detailsCache.get(S.drawer)?.images ?? [], +shot.dataset.shot); }
   const b = e.target.closest("[data-set]"); if (b) return setMark([S.drawer], b.dataset.set);
@@ -474,6 +494,12 @@ document.addEventListener("keydown", e => {
   if (e.target.matches?.("input[type=search],input[type=text],input[type=number],input[type=date],select")) { if (e.key === "Escape") e.target.blur(); return; }
   if (document.querySelector("dialog[open]") || e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key, step = S.grid ? gridCols() : 1;
+  if (rateArmed && Date.now() - rateArmed < 2500 && /^[0-5]$/.test(k)) {
+    rateArmed = 0; e.preventDefault();
+    return setRating(targets(), k === "0" ? null : +k);
+  }
+  rateArmed = 0;
+  if (k === "r" && targets().length) { rateArmed = Date.now(); return toast("Rate: press 1–5, or 0 to clear", false); }
   if (k === "j" || k === "ArrowDown") { e.preventDefault(); move(k === "ArrowDown" ? step : 1); }
   else if (k === "k" || k === "ArrowUp") { e.preventDefault(); move(k === "ArrowUp" ? -step : -1); }
   else if (S.grid && k === "ArrowRight") move(1);
