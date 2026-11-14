@@ -392,6 +392,7 @@ function tallyHTML() {
 
 /* ===== marking ===== */
 let toastT;
+function hideToast() { clearTimeout(toastT); $("#toast").classList.remove("show"); }
 function toast(msg, undo = true) {
   $("#toastMsg").textContent = msg; $("#undoBtn").hidden = !undo;
   $("#toast").classList.add("show"); clearTimeout(toastT);
@@ -469,7 +470,7 @@ function bulkButton(g, n) {
 }
 function disarmBulk() {
   if (!bulkArm) return;
-  const {g} = bulkArm; clearTimeout(bulkArm.timer); bulkArm = null;
+  const {g} = bulkArm; clearTimeout(bulkArm.timer); bulkArm = null; hideToast();
   const b = main.querySelector(`[data-bulk="${CSS.escape(g)}"]`);
   if (b) b.outerHTML = bulkButton(g, bulkIdsOf(g).length);
 }
@@ -485,7 +486,7 @@ function bulkViewed(g) {
     return toast(`Move ${plural(ids.length, "torrent")} to Viewed? Press Shift 1 again or click Confirm.`, false);
   }
   disarmBulk();
-  setMark(ids, "viewed");
+  setMark(ids, "viewed"); // its own toast (with Undo) replaces the confirm prompt
 }
 
 /* ===== older pages (Everything, scroll to the end) ===== */

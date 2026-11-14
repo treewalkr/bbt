@@ -226,7 +226,9 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
   .row>.c-stat,.row>.c-time,.colhead>.c-stat,.colhead>.c-time,.row .sel{display:none}
   .bins{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
   .bin .lbl{font-size:11px;text-align:center;line-height:1.2}.bin .count{font-size:18px}
-  .bin{grid-template-columns:1fr;justify-items:center;padding:6px;gap:2px}
+  .bin{grid-template-columns:1fr;grid-template-areas:"k" "l" "c";justify-items:center;padding:6px;gap:2px}
+  .bin .count{justify-self:center}
+  .bin .lbl{white-space:normal}
   .bin .lbl small{display:none}
   .drawer.open{width:100vw}.drawer .in{width:100vw}
 }
