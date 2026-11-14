@@ -203,7 +203,7 @@ function renderDrawer() {
   const d = detailsCache.get(it.id);
   const shots = !d ? `<p class="note">Loading screenshots…</p>`
     : d.error ? `<p class="err">Couldn't load screenshots: ${esc(d.error)}</p>`
-    : d.images.length ? `<div class="shots">${d.images.map(u => `<a href="${esc(u)}" target="_blank" rel="noreferrer"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`).join("")}</div>`
+    : d.images.length ? `<div class="shots">${d.images.map((u, i) => `<a href="${esc(u)}" data-shot="${i}" aria-label="View screenshot ${i + 1} of ${d.images.length}"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`).join("")}</div>`
     : `<p class="note">No screenshots on tracker for this torrent.</p>`;
   $("#drawerIn").innerHTML = `<header><span>${CATS[it.category] ?? it.category} <span style="color:var(--faint)">#${it.id}</span></span><button class="close" aria-label="Close details" data-act="close">×</button></header>
   <div class="big">${poster(it)}<div style="display:flex;flex-direction:column;gap:10px"><h4>${esc(clean(it.title))}</h4>
@@ -243,6 +243,38 @@ async function download(id) {
     S.downloading = false; if (S.drawer === id) renderDrawer();
   }
 }
+
+/* ===== screenshot viewer ===== */
+const V = {images: [], i: 0, opener: null};
+const viewerOpen = () => !$("#lightbox").hidden;
+function showShot() {
+  const n = V.images.length, url = V.images[V.i];
+  $("#lbImg").src = url;
+  $("#lbOpen").href = url;
+  $("#lbCount").textContent = `${V.i + 1} / ${n}`;
+  $(".lb-prev").hidden = $(".lb-next").hidden = n < 2;
+  for (const d of [-1, 1]) new Image().src = V.images[(V.i + d + n) % n]; // preload neighbours
+}
+function openViewer(images, i) {
+  if (!images.length) return;
+  V.images = images; V.i = i; V.opener = document.activeElement;
+  $("#lightbox").hidden = false; showShot(); $(".lb-close").focus();
+}
+function closeViewer() { $("#lightbox").hidden = true; $("#lbImg").removeAttribute("src"); V.opener?.focus?.(); }
+function stepViewer(d) { const n = V.images.length; if (n > 1) { V.i = (V.i + d + n) % n; showShot(); } }
+$("#lightbox").addEventListener("click", e => {
+  const act = e.target.closest("[data-lb]")?.dataset.lb;
+  if (act === "prev") stepViewer(-1);
+  else if (act === "next") stepViewer(1);
+  else if (act === "close" || e.target.id === "lightbox") closeViewer();
+});
+let touchX = null;
+$("#lightbox").addEventListener("touchstart", e => { touchX = e.touches[0].clientX; }, {passive: true});
+$("#lightbox").addEventListener("touchend", e => {
+  if (touchX === null) return;
+  const dx = e.changedTouches[0].clientX - touchX; touchX = null;
+  if (Math.abs(dx) > 40) stepViewer(dx < 0 ? 1 : -1);
+});
 
 /* ===== marking ===== */
 let toastT;
@@ -388,6 +420,8 @@ main.addEventListener("click", e => {
 });
 $("#bins").addEventListener("click", e => { const b = e.target.closest(".bin"); if (b) setMark(targets(), b.dataset.mark, {advance:true}); });
 $("#drawerIn").addEventListener("click", e => {
+  const shot = e.target.closest("[data-shot]");
+  if (shot) { e.preventDefault(); return openViewer(detailsCache.get(S.drawer)?.images ?? [], +shot.dataset.shot); }
   const b = e.target.closest("[data-set]"); if (b) return setMark([S.drawer], b.dataset.set);
   if (e.target.closest("[data-act=close]")) return closeDrawer();
   if (e.target.closest("[data-act=download]")) return download(S.drawer);
@@ -411,6 +445,12 @@ $("#sOpen").onchange = e => localStorage.setItem("bbt_sync_on_open", e.target.ch
 $("#sSticky").onchange = e => { S.sticky = e.target.checked; localStorage.setItem("bbt_sticky", S.sticky ? "1" : "0"); load(); };
 $("#sBlur").onchange = e => localStorage.setItem("bbt_blur", e.target.checked ? "1" : "0");
 document.addEventListener("keydown", e => {
+  if (viewerOpen()) {
+    if (e.key === "ArrowRight" || e.key === "l") { e.preventDefault(); stepViewer(1); }
+    else if (e.key === "ArrowLeft" || e.key === "h") { e.preventDefault(); stepViewer(-1); }
+    else if (e.key === "Escape") closeViewer();
+    return;
+  }
   if (e.target.matches?.("input[type=search],input[type=text],input[type=number],input[type=date],select")) { if (e.key === "Escape") e.target.blur(); return; }
   if (document.querySelector("dialog[open]") || e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key, step = S.grid ? gridCols() : 1;

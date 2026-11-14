@@ -221,3 +221,19 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
 .coverage{margin:0;padding:18px 20px 28px;font-size:13px;color:var(--muted);max-width:70ch}
 .older{display:flex;align-items:center;gap:14px;padding:18px 20px 28px;font-size:13px;color:var(--muted)}
 .older button{border:1px solid var(--line);background:var(--raise);border-radius:var(--r-s);padding:5px 12px}
+
+/* ---- screenshot viewer ---- */
+.lightbox{position:fixed;inset:0;z-index:30;background:rgba(14,10,18,.94);display:grid;grid-template-columns:72px minmax(0,1fr) 72px;grid-template-rows:1fr auto;align-items:center;justify-items:center}
+.lightbox[hidden]{display:none}
+.lightbox img{grid-column:2;grid-row:1;max-width:100%;max-height:calc(100vh - 80px);object-fit:contain;border-radius:var(--r-s)}
+.lb-btn{border:0;background:rgba(255,255,255,.08);color:var(--text);width:48px;height:48px;border-radius:50%;font-size:28px;line-height:1;display:grid;place-items:center}
+.lb-btn:hover{background:rgba(255,255,255,.18)}
+.lb-btn[hidden]{display:none}
+.lb-prev{grid-column:1;grid-row:1}
+.lb-next{grid-column:3;grid-row:1}
+.lb-close{position:absolute;top:14px;right:14px;font-size:24px}
+.lb-bar{grid-column:1/-1;grid-row:2;display:flex;gap:18px;padding:12px 0 18px;font-size:13px;color:var(--muted)}
+.lb-bar a{color:var(--muted)}
+.lb-bar a:hover{color:var(--text)}
+.shots a{cursor:zoom-in}
+@media (max-width:760px){.lightbox{grid-template-columns:44px minmax(0,1fr) 44px}.lb-btn{width:38px;height:38px;font-size:22px}}

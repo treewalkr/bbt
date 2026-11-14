@@ -56,6 +56,14 @@
 
 <aside class="drawer" id="drawer" aria-label="Details"><div class="in" id="drawerIn"></div></aside>
 
+<div class="lightbox" id="lightbox" hidden role="dialog" aria-modal="true" aria-label="Screenshot viewer">
+  <button class="lb-btn lb-close" data-lb="close" aria-label="Close viewer">×</button>
+  <button class="lb-btn lb-prev" data-lb="prev" aria-label="Previous image">‹</button>
+  <img id="lbImg" alt="" referrerpolicy="no-referrer">
+  <button class="lb-btn lb-next" data-lb="next" aria-label="Next image">›</button>
+  <div class="lb-bar"><span id="lbCount"></span><a id="lbOpen" target="_blank" rel="noreferrer">Open original</a></div>
+</div>
+
 <div class="toast" id="toast" role="status"><span id="toastMsg"></span><button id="undoBtn">Undo</button></div>
 
 <dialog id="help">
@@ -75,7 +83,8 @@
     <kbd>u</kbd><span>Undo last change</span>
     <kbd>b</kbd><span>Blur posters on or off</span>
     <kbd>/</kbd><span>Search</span>
-    <kbd>Esc</kbd><span>Close details, clear selection</span>
+    <kbd>← →</kbd><span>Previous or next screenshot (in the viewer)</span>
+    <kbd>Esc</kbd><span>Close viewer or details, clear selection</span>
   </div>
   <form method="dialog" class="foot"><button>Close</button></form>
 </dialog>
