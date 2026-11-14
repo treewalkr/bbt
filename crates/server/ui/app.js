@@ -205,9 +205,10 @@ function renderBins() {
   $("#bins").innerHTML = Object.entries(MARKS).map(([k, m]) => `<button class="bin" data-s="${{viewed:"viewed", view_later:"watch", download_later:"get", downloaded:"got"}[k]}" data-mark="${k}"><kbd>${m.key}</kbd><span class="lbl">${m.label}<small>${m.hint}</small></span><span class="count">${c[k] ?? 0}</span></button>`).join("");
 }
 function renderTarget() {
-  const t = $("#target");
-  if (S.sel.size) t.innerHTML = `Applies to<b>${S.sel.size} selected</b>`;
-  else { const it = flat.find(i => i.id === S.focus); t.innerHTML = `Applies to<b>${it ? esc(code(it)) : "—"}</b>`; }
+  const t = $("#target"), it = flat.find(i => i.id === S.focus);
+  const what = S.sel.size ? `${S.sel.size} selected` : it ? esc(code(it)) : "—";
+  t.classList.toggle("rating", !!rateArmed);
+  t.innerHTML = rateArmed ? `Rate ${what}<b>1–5, or 0 to clear</b>` : `Applies to<b>${what}</b>`;
 }
 function renderSyncText() {
   if (S.syncing) return;
@@ -463,7 +464,14 @@ async function setRating(ids, stars) {
   const what = ids.length === 1 ? "" : ` ${ids.length} torrents`;
   toast(stars ? `Rated${what} ${stars} star${stars === 1 ? "" : "s"}` : `Rating cleared${what ? " on" + what : ""}`);
 }
-let rateArmed = 0;
+// `r` arms rating; the decision bar shows the prompt for exactly as long as it stays armed.
+const RATE_MS = 4000;
+let rateArmed = 0, rateT;
+function armRate(on) {
+  rateArmed = on ? Date.now() : 0; clearTimeout(rateT);
+  if (on) rateT = setTimeout(() => armRate(false), RATE_MS);
+  renderTarget();
+}
 
 /* ===== sync ===== */
 async function doSync() {
@@ -560,12 +568,12 @@ document.addEventListener("keydown", e => {
   if (e.target.matches?.("input[type=search],input[type=text],input[type=number],input[type=date],select")) { if (e.key === "Escape") e.target.blur(); return; }
   if (document.querySelector("dialog[open]") || e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key, step = S.grid ? gridCols() : 1;
-  if (rateArmed && Date.now() - rateArmed < 2500 && /^[0-5]$/.test(k)) {
-    rateArmed = 0; e.preventDefault();
+  if (rateArmed && /^[0-5]$/.test(k)) {
+    armRate(false); e.preventDefault();
     return setRating(targets(), k === "0" ? null : +k);
   }
-  rateArmed = 0;
-  if (k === "r" && targets().length) { rateArmed = Date.now(); return toast("Rate: press 1–5, or 0 to clear", false); }
+  if (rateArmed) armRate(false);
+  if (k === "r" && targets().length) return armRate(true);
   if (k === "j" || k === "ArrowDown") { e.preventDefault(); move(k === "ArrowDown" ? step : 1); }
   else if (k === "k" || k === "ArrowUp") { e.preventDefault(); move(k === "ArrowUp" ? -step : -1); }
   else if (S.grid && k === "ArrowRight") move(1);
