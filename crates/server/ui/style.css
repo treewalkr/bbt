@@ -225,7 +225,14 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
 /* ---- screenshot viewer ---- */
 .lightbox{position:fixed;inset:0;z-index:30;background:rgba(14,10,18,.94);display:grid;grid-template-columns:72px minmax(0,1fr) 72px;grid-template-rows:1fr auto;align-items:center;justify-items:center}
 .lightbox[hidden]{display:none}
-.lightbox img{grid-column:2;grid-row:1;max-width:100%;max-height:calc(100vh - 80px);object-fit:contain;border-radius:var(--r-s)}
+.lb-stage{grid-column:2;grid-row:1;width:100%;height:calc(100vh - 80px);display:grid;place-items:center;overflow:hidden}
+.lb-stage img{max-width:100%;max-height:calc(100vh - 80px);object-fit:contain;border-radius:var(--r-s);cursor:zoom-in}
+.lightbox.full .lb-stage{grid-column:1/-1;overflow:auto;place-items:start center;overscroll-behavior:contain}
+.lightbox.full .lb-stage img{max-width:none;max-height:none;border-radius:0;cursor:grab;margin:auto}
+.lightbox.full .lb-stage.drag img{cursor:grabbing}
+.lightbox.full .lb-btn{z-index:1}
+.lb-size{border:0;background:none;color:var(--muted);font:inherit;padding:0;text-decoration:underline;cursor:pointer}
+.lb-size:hover,.lb-size[aria-pressed=true]{color:var(--text)}
 .lb-btn{border:0;background:rgba(255,255,255,.08);color:var(--text);width:48px;height:48px;border-radius:50%;font-size:28px;line-height:1;display:grid;place-items:center}
 .lb-btn:hover{background:rgba(255,255,255,.18)}
 .lb-btn[hidden]{display:none}

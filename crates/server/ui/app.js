@@ -260,11 +260,12 @@ async function download(id) {
 }
 
 /* ===== screenshot viewer ===== */
-const V = {images: [], i: 0, opener: null};
+const V = {images: [], i: 0, opener: null, full: false, dragged: false};
 const viewerOpen = () => !$("#lightbox").hidden;
 function showShot() {
   const n = V.images.length, url = V.images[V.i];
   $("#lbImg").src = url;
+  $("#lbStage").scrollTo(0, 0);
   $("#lbOpen").href = url;
   $("#lbCount").textContent = `${V.i + 1} / ${n}`;
   $(".lb-prev").hidden = $(".lb-next").hidden = n < 2;
@@ -275,18 +276,38 @@ function openViewer(images, i) {
   V.images = images; V.i = i; V.opener = document.activeElement;
   $("#lightbox").hidden = false; showShot(); $(".lb-close").focus();
 }
-function closeViewer() { $("#lightbox").hidden = true; $("#lbImg").removeAttribute("src"); V.opener?.focus?.(); }
+function closeViewer() { setFull(false); $("#lightbox").hidden = true; $("#lbImg").removeAttribute("src"); V.opener?.focus?.(); }
+function setFull(on) {
+  V.full = on; V.dragged = false; $("#lightbox").classList.toggle("full", on);
+  $("#lbSize").setAttribute("aria-pressed", on); $("#lbSize").textContent = on ? "Fit to screen" : "Full size";
+  $("#lbImg").title = on ? "Drag to move, click to fit (f)" : "Click for full size (f)";
+}
 function stepViewer(d) { const n = V.images.length; if (n > 1) { V.i = (V.i + d + n) % n; showShot(); } }
 $("#lightbox").addEventListener("click", e => {
   const act = e.target.closest("[data-lb]")?.dataset.lb;
   if (act === "prev") stepViewer(-1);
   else if (act === "next") stepViewer(1);
-  else if (act === "close" || e.target.id === "lightbox") closeViewer();
+  else if (act === "size") setFull(!V.full);
+  else if (e.target.id === "lbImg") { if (!V.dragged) setFull(!V.full); }
+  else if (act === "close" || e.target.id === "lightbox" || (e.target.id === "lbStage" && !V.full)) closeViewer();
+});
+// drag to move a full-size image; a click without movement toggles the size
+$("#lbStage").addEventListener("mousedown", e => {
+  if (!V.full || e.button !== 0) return;
+  e.preventDefault();
+  const st = $("#lbStage"), x = e.clientX, y = e.clientY, sl = st.scrollLeft, stp = st.scrollTop;
+  V.dragged = false; st.classList.add("drag");
+  const move = m => {
+    if (Math.abs(m.clientX - x) + Math.abs(m.clientY - y) > 4) V.dragged = true;
+    st.scrollLeft = sl - (m.clientX - x); st.scrollTop = stp - (m.clientY - y);
+  };
+  const up = () => { st.classList.remove("drag"); removeEventListener("mousemove", move); removeEventListener("mouseup", up); };
+  addEventListener("mousemove", move); addEventListener("mouseup", up);
 });
 let touchX = null;
 $("#lightbox").addEventListener("touchstart", e => { touchX = e.touches[0].clientX; }, {passive: true});
 $("#lightbox").addEventListener("touchend", e => {
-  if (touchX === null) return;
+  if (touchX === null || V.full) return; // full size: swipes scroll the image
   const dx = e.changedTouches[0].clientX - touchX; touchX = null;
   if (Math.abs(dx) > 40) stepViewer(dx < 0 ? 1 : -1);
 });
@@ -488,7 +509,8 @@ document.addEventListener("keydown", e => {
   if (viewerOpen()) {
     if (e.key === "ArrowRight" || e.key === "l") { e.preventDefault(); stepViewer(1); }
     else if (e.key === "ArrowLeft" || e.key === "h") { e.preventDefault(); stepViewer(-1); }
-    else if (e.key === "Escape") closeViewer();
+    else if (e.key === "f") { e.preventDefault(); setFull(!V.full); }
+    else if (e.key === "Escape") { if (V.full) setFull(false); else closeViewer(); }
     return;
   }
   if (e.target.matches?.("input[type=search],input[type=text],input[type=number],input[type=date],select")) { if (e.key === "Escape") e.target.blur(); return; }
