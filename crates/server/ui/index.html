@@ -82,29 +82,39 @@
 
 <dialog id="help">
   <h3>Keyboard</h3>
-  <div class="keys">
-    <kbd>j</kbd><span>Next item</span>
-    <kbd>k</kbd><span>Previous item</span>
-    <kbd>1</kbd><span>Viewed</span>
-    <kbd>2</kbd><span>View later</span>
-    <kbd>3</kbd><span>Download later</span>
-    <kbd>4</kbd><span>Downloaded</span>
-    <kbd>0</kbd><span>Back to New</span>
-    <kbd>1–4</kbd><span>Each sorts the torrent and moves to the next one</span>
-    <kbd>r then 1–5</kbd><span>Rate 1 to 5 stars (r then 0 clears)</span>
-    <kbd>Shift 1</kbd><span>Mark the day's new torrents viewed (twice for more than 20)</span>
-    <kbd>x</kbd><span>Select or unselect item</span>
-    <kbd>Enter</kbd><span>Open details (or click a focused torrent)</span>
-    <kbd>o</kbd><span>Open on the tracker</span>
-    <kbd>u</kbd><span>Undo last change</span>
-    <kbd>b</kbd><span>Blur posters on or off</span>
-    <kbd>t</kbd><span>Blur titles on or off</span>
-    <kbd>Hold Option</kbd><span>Show blurred posters and titles while held</span>
-    <kbd>/</kbd><span>Search</span>
-    <kbd>← →</kbd><span>Previous or next screenshot (in the viewer)</span>
-    <kbd>f</kbd><span>Full size or fit to screen (in the viewer)</span>
-    <kbd>v</kbd><span>Show a blurred screenshot (in the viewer)</span>
-    <kbd>Esc</kbd><span>Close viewer or details, clear selection</span>
+  <div class="keycols">
+    <section><h4>Move</h4><div class="keys">
+      <kbd>j</kbd><span>Next torrent</span>
+      <kbd>k</kbd><span>Previous torrent</span>
+      <kbd>Enter</kbd><span>Open details (or click a focused torrent)</span>
+      <kbd>o</kbd><span>Open on the tracker</span>
+      <kbd>/</kbd><span>Search</span>
+    </div></section>
+    <section><h4>Sort, then move to the next</h4><div class="keys">
+      <kbd>1</kbd><span>Viewed</span>
+      <kbd>2</kbd><span>View later</span>
+      <kbd>3</kbd><span>Download later</span>
+      <kbd>4</kbd><span>Downloaded</span>
+      <kbd>0</kbd><span>Back to New (stays put)</span>
+      <kbd>Shift 1</kbd><span>Mark the day's new torrents viewed (press twice for more than 20)</span>
+      <kbd>u</kbd><span>Undo the last change</span>
+    </div></section>
+    <section><h4>Rate and select</h4><div class="keys">
+      <kbd>r</kbd><span>Then 1–5 to rate, or 0 to clear</span>
+      <kbd>x</kbd><span>Select or unselect</span>
+      <kbd>Esc</kbd><span>Close details, clear selection</span>
+    </div></section>
+    <section><h4>Privacy</h4><div class="keys">
+      <kbd>b</kbd><span>Blur posters on or off</span>
+      <kbd>t</kbd><span>Blur titles on or off</span>
+      <kbd>Option</kbd><span>Hold to show what is blurred</span>
+    </div></section>
+    <section><h4>Screenshot viewer</h4><div class="keys">
+      <kbd>← →</kbd><span>Previous or next screenshot</span>
+      <kbd>v</kbd><span>Show a blurred screenshot</span>
+      <kbd>f</kbd><span>Full size or fit to screen</span>
+      <kbd>Esc</kbd><span>Close the viewer</span>
+    </div></section>
   </div>
   <form method="dialog" class="foot"><button>Close</button></form>
 </dialog>
@@ -115,7 +125,7 @@
   <div class="set">
     <label for="sOpen">Sync when I open bbt</label><input id="sOpen" type="checkbox">
     <span class="hint">Only if the last sync is over an hour old. Each sync reads at most 12 pages, 3 seconds apart, and waits 10 minutes before the next one.</span>
-    <span>Last sync</span><span id="sLast" class="muted">Never</span>
+    <span class="hint">Last sync: <span id="sLast">Never</span></span>
   </div>
   <h4>List</h4>
   <div class="set">

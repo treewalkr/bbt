@@ -191,10 +191,16 @@ dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);bo
 dialog::backdrop{background:#0008}
 dialog h3{margin:0 0 14px;font-family:"Bricolage Grotesque";font-size:24px}
 dialog h4{margin:18px 0 8px;font-size:13px;color:var(--muted);font-weight:500}
-.keys{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13px}
+#help{width:min(720px,94vw)}
+.keycols{display:grid;grid-template-columns:1fr 1fr;gap:4px 32px;align-items:start}
+.keycols section:nth-child(2){grid-row:span 2}
+.keycols h4{margin:14px 0 8px}
+.keys{display:grid;grid-template-columns:4.5em 1fr;gap:6px 12px;font-size:13px;align-items:baseline}
+@media (max-width:640px){.keycols{grid-template-columns:1fr}.keycols section:nth-child(2){grid-row:auto}}
 .keys kbd{font:600 12px "IBM Plex Sans Thai";background:var(--raise);border:1px solid var(--line);border-radius:4px;padding:1px 6px;justify-self:start}
 .set{display:grid;grid-template-columns:1fr auto;gap:10px 16px;align-items:center;font-size:13px}
 .set .hint{grid-column:1/-1;margin-top:-6px;font-size:12px;color:var(--faint)}
+.set input[type=checkbox]{justify-self:end;width:16px;height:16px;accent-color:var(--new)}
 .set input[type=number],.set input[type=text]{width:120px;background:var(--ink);border:1px solid var(--line);border-radius:4px;padding:4px 8px}
 .ok{color:var(--got)}
 dialog .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
