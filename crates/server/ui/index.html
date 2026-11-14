@@ -82,41 +82,45 @@
 
 <dialog id="help">
   <h3>Keyboard</h3>
+  <p class="kbmsg" id="kbMsg" aria-live="polite">Click a key to change it.</p>
   <div class="keycols">
     <section><h4>Move</h4><div class="keys">
-      <kbd>j</kbd><span>Next torrent</span>
-      <kbd>k</kbd><span>Previous torrent</span>
+      <button type="button" class="kb" data-k="next"></button><span>Next torrent, or ↓</span>
+      <button type="button" class="kb" data-k="prev"></button><span>Previous torrent, or ↑</span>
       <kbd>Enter</kbd><span>Open details (or click a focused torrent)</span>
-      <kbd>o</kbd><span>Open on the tracker</span>
-      <kbd>/</kbd><span>Search</span>
+      <button type="button" class="kb" data-k="site"></button><span>Open on the tracker</span>
+      <button type="button" class="kb" data-k="search"></button><span>Search</span>
     </div></section>
     <section><h4>Sort, then move to the next</h4><div class="keys">
-      <kbd>1</kbd><span>Viewed</span>
-      <kbd>2</kbd><span>View later</span>
-      <kbd>3</kbd><span>Download later</span>
-      <kbd>4</kbd><span>Downloaded</span>
-      <kbd>0</kbd><span>Back to New (stays put)</span>
-      <kbd>Shift 1</kbd><span>Mark the day's new torrents viewed (press twice for more than 20)</span>
-      <kbd>u</kbd><span>Undo the last change</span>
+      <button type="button" class="kb" data-k="viewed"></button><span>Viewed</span>
+      <button type="button" class="kb" data-k="view_later"></button><span>View later</span>
+      <button type="button" class="kb" data-k="download_later"></button><span>Download later</span>
+      <button type="button" class="kb" data-k="downloaded"></button><span>Downloaded</span>
+      <button type="button" class="kb" data-k="unmark"></button><span>Back to New (stays put)</span>
+      <button type="button" class="kb" data-k="bulk"></button><span>Mark the day's new torrents viewed (press twice for more than 20)</span>
+      <button type="button" class="kb" data-k="undo"></button><span>Undo the last change</span>
     </div></section>
     <section><h4>Rate and select</h4><div class="keys">
-      <kbd>r</kbd><span>Then 1–5 to rate, or 0 to clear</span>
-      <kbd>x</kbd><span>Select or unselect</span>
+      <button type="button" class="kb" data-k="rate"></button><span>Then 1–5 to rate, or 0 to clear</span>
+      <button type="button" class="kb" data-k="select"></button><span>Select or unselect</span>
       <kbd>Esc</kbd><span>Close details, clear selection</span>
     </div></section>
     <section><h4>Privacy</h4><div class="keys">
-      <kbd>b</kbd><span>Blur posters on or off</span>
-      <kbd>t</kbd><span>Blur titles on or off</span>
+      <button type="button" class="kb" data-k="blur"></button><span>Blur posters on or off</span>
+      <button type="button" class="kb" data-k="titles"></button><span>Blur titles on or off</span>
       <kbd>Option</kbd><span>Hold to show what is blurred</span>
+
     </div></section>
     <section><h4>Screenshot viewer</h4><div class="keys">
-      <kbd>← →</kbd><span>Previous or next screenshot</span>
-      <kbd>v</kbd><span>Show a blurred screenshot</span>
-      <kbd>f</kbd><span>Full size or fit to screen</span>
+      <button type="button" class="kb" data-k="lbPrev"></button><span>Previous screenshot, or ←</span>
+      <button type="button" class="kb" data-k="lbNext"></button><span>Next screenshot, or →</span>
+      <button type="button" class="kb" data-k="lbReveal"></button><span>Show a blurred screenshot</span>
+      <button type="button" class="kb" data-k="lbFull"></button><span>Full size or fit to screen</span>
       <kbd>Esc</kbd><span>Close the viewer</span>
     </div></section>
   </div>
-  <form method="dialog" class="foot"><button>Close</button></form>
+  <p class="kbnote">Enter, Esc, the arrows and Option are fixed. Open this list with <button type="button" class="kb" data-k="help"></button></p>
+  <form method="dialog" class="foot"><button type="button" id="kbReset">Reset to defaults</button><button>Close</button></form>
 </dialog>
 
 <dialog id="settings">
@@ -136,7 +140,7 @@
   <h4>Keyboard</h4>
   <div class="set">
     <label for="sKeys">Single-key shortcuts</label><input id="sKeys" type="checkbox">
-    <span class="hint">j, k, 1–4, r and the rest. Turn off if speech input or a screen reader sends stray keys; arrows, Enter and Esc keep working.</span>
+    <span class="hint">To change a key, click ? at the top right, then click the key. Turn off if speech input or a screen reader sends stray keys; arrows, Enter and Esc keep working.</span>
   </div>
   <form method="dialog" class="foot"><button>Done</button></form>
 </dialog>

@@ -198,7 +198,16 @@ dialog h4{margin:18px 0 8px;font-size:13px;color:var(--muted);font-weight:500}
 .keycols h4{margin:14px 0 8px}
 .keys{display:grid;grid-template-columns:4.5em 1fr;gap:6px 12px;font-size:13px;align-items:baseline}
 @media (max-width:640px){.keycols{grid-template-columns:1fr}.keycols section:nth-child(2){grid-row:auto}}
-.keys kbd{font:600 12px "IBM Plex Sans Thai";background:var(--raise);border:1px solid var(--line);border-radius:4px;padding:1px 6px;justify-self:start}
+.keys kbd,.kb{font:600 12px "IBM Plex Sans Thai";background:var(--raise);border:1px solid var(--line);border-radius:4px;padding:1px 6px;justify-self:start}
+.kb{color:var(--text);min-width:2em;cursor:pointer;border-bottom-width:2px}
+.kb:hover{border-color:var(--muted)}
+.kb.changed{border-color:var(--watch);color:var(--watch)}
+.kb.capturing{border-color:var(--new);color:var(--new);font-weight:500}
+.kbmsg{margin:-6px 0 4px;font-size:13px;color:var(--muted);min-height:1.4em}
+.kbnote{margin:16px 0 0;font-size:12px;color:var(--faint)}
+.kbnote .kb{margin-left:4px}
+#kbReset{margin-right:auto}
+#kbReset:disabled{opacity:.45;cursor:default}
 .set{display:grid;grid-template-columns:1fr auto;gap:10px 16px;align-items:center;font-size:13px}
 .set .hint{grid-column:1/-1;margin-top:-6px;font-size:12px;color:var(--faint)}
 .set input[type=checkbox]{justify-self:end;width:16px;height:16px;accent-color:var(--new)}

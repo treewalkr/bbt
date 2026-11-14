@@ -11,11 +11,34 @@ function setCats(list) {
   $("#cats").hidden = !catsOn();
 }
 const MARKS = {
-  viewed:         {label:"Viewed",         key:"1", c:"var(--viewed)",        hint:"Seen it, skip next time"},
-  view_later:     {label:"View later",     key:"2", c:"var(--watch)",   hint:"Look at it properly later"},
-  download_later: {label:"Download later", key:"3", c:"var(--get)",     hint:"Grab the .torrent later"},
-  downloaded:     {label:"Downloaded",     key:"4", c:"var(--got)",     hint:"Already have it"},
+  viewed:         {label:"Viewed",         c:"var(--viewed)",        hint:"Seen it, skip next time"},
+  view_later:     {label:"View later",     c:"var(--watch)",   hint:"Look at it properly later"},
+  download_later: {label:"Download later", c:"var(--get)",     hint:"Grab the .torrent later"},
+  downloaded:     {label:"Downloaded",     c:"var(--got)",     hint:"Already have it"},
 };
+/* ===== key bindings ===== */
+// Single-character keys only. Enter, Esc, the arrows and Option stay fixed.
+const KEY_DEFAULTS = {
+  next:"j", prev:"k", site:"o", search:"/",
+  viewed:"1", view_later:"2", download_later:"3", downloaded:"4", unmark:"0", bulk:"!", undo:"u",
+  rate:"r", select:"x", blur:"b", titles:"t", help:"?",
+  lbPrev:"h", lbNext:"l", lbReveal:"v", lbFull:"f",
+};
+// The viewer has its own keys, so a key can mean one thing there and another in the list.
+const inViewer = a => a.startsWith("lb");
+function loadKeys() {
+  const keys = {...KEY_DEFAULTS};
+  try {
+    const saved = JSON.parse(localStorage.getItem("bbt_keymap")) ?? {};
+    for (const [a, k] of Object.entries(saved)) if (a in keys && typeof k === "string" && k.length === 1) keys[a] = k;
+  } catch { /* defaults */ }
+  return keys;
+}
+let KEYS = loadKeys();
+const keyName = k => k === " " ? "Space" : k === "!" ? "Shift 1" : k;
+const keyOf = a => keyName(KEYS[a]);
+// Shift 1 is "!" on US keyboards; match the physical key so other layouts work too.
+const hit = (a, e) => e.key === KEYS[a] || (KEYS[a] === "!" && e.shiftKey && e.code === "Digit1");
 const VIEWS = [
   ["new","New","var(--new)"],["view_later","View later","var(--watch)"],["download_later","Download later","var(--get)"],
   ["downloaded","Downloaded","var(--got)"],["viewed","Viewed","var(--viewed)"],["all","Everything","var(--faint)"],
@@ -185,7 +208,7 @@ function render() {
     else if (S.q || S.free) msg = `<h3>No matches</h3><p>Nothing in ${label}${S.q ? ` matches “${esc(S.q)}”` : ""}${S.free ? `${S.q ? " and is" : " is"} free` : ""}${dated() ? ` ${rangeText()}` : ""}.</p><button data-act="clearfilters">Clear ${S.q && S.free ? "search and Free only" : S.q ? "search" : "Free only"}</button>`;
     else if (!total) msg = `<h3>No torrents yet</h3><p>Sync to fetch the latest uploads from tracker.</p><button data-act="sync">Sync now</button>`;
     else if (S.view === "new") msg = `<h3>All caught up</h3>${tallyHTML()}<p>Nothing new ${rangeText()}. Sync to check the tracker for new uploads.</p><button data-act="sync">Sync now</button>`;
-    else msg = `<h3>Nothing in ${label}</h3><p>${MARKS[S.view] ? `Press ${MARKS[S.view].key} on a torrent to add it here.` : "Try a wider date range."}</p>`;
+    else msg = `<h3>Nothing in ${label}</h3><p>${MARKS[S.view] ? `Press ${keyOf(S.view)} on a torrent to add it here.` : "Try a wider date range."}</p>`;
     main.innerHTML = `<div class="empty">${msg}</div>`;
   } else {
     const total = S.summary?.counts.total ?? 0;
@@ -226,7 +249,7 @@ const blind = () => touch() && !S.picked;
 function pick() { if (!S.picked) { S.picked = true; renderBins(); } }
 function renderBins() {
   const c = S.summary?.counts ?? {};
-  $("#bins").innerHTML = Object.entries(MARKS).map(([k, m]) => `<button class="bin" data-s="${{viewed:"viewed", view_later:"watch", download_later:"get", downloaded:"got"}[k]}" data-mark="${k}" ${blind() ? "disabled" : ""}><kbd>${m.key}</kbd><span class="lbl">${m.label}<small>${m.hint}</small></span><span class="count">${c[k] ?? 0}</span></button>`).join("");
+  $("#bins").innerHTML = Object.entries(MARKS).map(([k, m]) => `<button class="bin" data-s="${{viewed:"viewed", view_later:"watch", download_later:"get", downloaded:"got"}[k]}" data-mark="${k}" ${blind() ? "disabled" : ""}><kbd>${keyOf(k)}</kbd><span class="lbl">${m.label}<small>${m.hint}</small></span><span class="count">${c[k] ?? 0}</span></button>`).join("");
 }
 function renderTarget() {
   const t = $("#target"), it = flat.find(i => i.id === S.focus);
@@ -268,8 +291,8 @@ function renderDrawer() {
   <dl><dt>Uploaded</dt><dd>${fmtWhen(it.uploaded_at)}</dd><dt>By</dt><dd>${esc(it.uploader ?? "Anonymous")}</dd><dt>Size</dt><dd>${fmtSize(it.size_bytes)}, ${it.files} file${it.files === 1 ? "" : "s"}</dd></dl></div></div>
   <dl><dt>Seeding</dt><dd>${it.seeders}</dd><dt>Leeching</dt><dd>${it.leechers}</dd><dt>Snatched</dt><dd>${it.snatched}</dd><dt>Free download</dt><dd>${it.free ? esc(it.free) : "No"}</dd><dt>Counts updated</dt><dd>${fmtAgo(it.stats_at)}</dd></dl>
   ${shots}
-  <div class="rate-row"><div class="rate" role="group" aria-label="Your rating">${[5, 4, 3, 2, 1].map(n => `<button data-rate="${n}" class="${it.rating >= n ? "on" : ""}" aria-pressed="${it.rating === n}" aria-label="${n} star${n === 1 ? "" : "s"}">★</button>`).join("")}</div><span class="note">${it.rating ? `${it.rating} of 5. ${touch() ? "Tap" : "Click"} it again to clear.` : touch() ? "Not rated." : "Not rated. Press r then 1–5."}</span></div>
-  <div class="states" role="group" aria-label="Sort into">${[["", {label:"New", key:"0", c:"var(--new)"}], ...Object.entries(MARKS)].map(([k, m]) => `<button data-set="${k}" style="--c:${m.c}" aria-pressed="${(it.mark ?? "") === k}"><kbd>${m.key}</kbd>${m.label}</button>`).join("")}</div>
+  <div class="rate-row"><div class="rate" role="group" aria-label="Your rating">${[5, 4, 3, 2, 1].map(n => `<button data-rate="${n}" class="${it.rating >= n ? "on" : ""}" aria-pressed="${it.rating === n}" aria-label="${n} star${n === 1 ? "" : "s"}">★</button>`).join("")}</div><span class="note">${it.rating ? `${it.rating} of 5. ${touch() ? "Tap" : "Click"} it again to clear.` : touch() ? "Not rated." : `Not rated. Press ${keyOf("rate")} then 1–5.`}</span></div>
+  <div class="states" role="group" aria-label="Sort into">${[["", {label:"New", c:"var(--new)"}], ...Object.entries(MARKS)].map(([k, m]) => `<button data-set="${k}" style="--c:${m.c}" aria-pressed="${(it.mark ?? "") === k}"><kbd>${keyOf(k || "unmark")}</kbd>${m.label}</button>`).join("")}</div>
   <div class="acts"><button class="primary" data-act="download" ${S.downloading ? "disabled" : ""}>${S.downloading ? "Downloading…" : "Download .torrent"}</button>${siteUrl(it) ? `<a href="${siteUrl(it)}" target="_blank" rel="noreferrer">Open on the tracker</a>` : ""}</div>
   <p class="note">Download fetches a fresh link from tracker and marks the torrent Downloaded.</p>`;
   if (hadFocus) $("#drawerIn h4").focus();
@@ -337,7 +360,7 @@ const viewerBlurred = () => document.body.classList.contains("blur") && !$("#lig
 function revealShots(on) {
   $("#lightbox").classList.toggle("reveal", on);
   $("#lbReveal").hidden = !viewerBlurred();
-  $("#lbImg").title = viewerBlurred() ? "Click to show (v)" : V.full ? "Drag to move, click to fit (f)" : "Click for full size (f)";
+  $("#lbImg").title = viewerBlurred() ? `Click to show (${keyOf("lbReveal")})` : V.full ? `Drag to move, click to fit (${keyOf("lbFull")})` : `Click for full size (${keyOf("lbFull")})`;
 }
 function openViewer(images, i) {
   if (!images.length) return;
@@ -495,7 +518,7 @@ function bulkViewed(g) {
     bulkArm = {g, timer: setTimeout(disarmBulk, 5000)};
     const b = main.querySelector(`[data-bulk="${CSS.escape(g)}"]`);
     if (b) b.outerHTML = bulkButton(g, ids.length);
-    return toast(`Move ${plural(ids.length, "torrent")} to Viewed? Press Shift 1 again or click Confirm.`, false);
+    return toast(`Move ${plural(ids.length, "torrent")} to Viewed? Press ${keyOf("bulk")} again or click Confirm.`, false);
   }
   disarmBulk();
   setMark(ids, "viewed"); // its own toast (with Undo) replaces the confirm prompt
@@ -668,17 +691,19 @@ $("#sKeys").onchange = e => { S.keys = e.target.checked; localStorage.setItem("b
 $("#sBlur").onchange = e => localStorage.setItem("bbt_blur", e.target.checked ? "1" : "0");
 $("#sHide").onchange = e => localStorage.setItem("bbt_hide_titles", e.target.checked ? "1" : "0");
 document.addEventListener("keydown", e => {
+  if (capturing) return; // the key editor takes this one
+  const k = e.key;
   if (viewerOpen()) {
-    if (e.key === "ArrowRight" || e.key === "l") { e.preventDefault(); stepViewer(1); }
-    else if (e.key === "ArrowLeft" || e.key === "h") { e.preventDefault(); stepViewer(-1); }
-    else if (e.key === "f") { e.preventDefault(); setFull(!V.full); }
-    else if (e.key === "v") { e.preventDefault(); revealShots(true); }
-    else if (e.key === "Escape") closeViewer();
+    if (k === "ArrowRight" || hit("lbNext", e)) { e.preventDefault(); stepViewer(1); }
+    else if (k === "ArrowLeft" || hit("lbPrev", e)) { e.preventDefault(); stepViewer(-1); }
+    else if (hit("lbFull", e)) { e.preventDefault(); setFull(!V.full); }
+    else if (hit("lbReveal", e)) { e.preventDefault(); revealShots(true); }
+    else if (k === "Escape") closeViewer();
     return;
   }
-  if (e.target.matches?.("input[type=search],input[type=text],input[type=number],input[type=date],select")) { if (e.key === "Escape") e.target.blur(); return; }
+  if (e.target.matches?.("input[type=search],input[type=text],input[type=number],input[type=date],select")) { if (k === "Escape") e.target.blur(); return; }
   if (document.querySelector("dialog[open]") || e.metaKey || e.ctrlKey || e.altKey) return;
-  const k = e.key, step = S.grid ? gridCols() : 1;
+  const step = S.grid ? gridCols() : 1;
   // WCAG 2.1.4: single-character shortcuts can be turned off in Settings.
   if (!S.keys && !["Escape", "Enter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(k)) return;
   if (rateArmed && /^[0-5]$/.test(k)) {
@@ -686,30 +711,102 @@ document.addEventListener("keydown", e => {
     return setRating(targets(), k === "0" ? null : +k);
   }
   if (rateArmed) armRate(false);
-  if (k === "r" && targets().length) return armRate(true);
-  if (k === "j" || k === "ArrowDown") { e.preventDefault(); move(k === "ArrowDown" ? step : 1); }
-  else if (k === "k" || k === "ArrowUp") { e.preventDefault(); move(k === "ArrowUp" ? -step : -1); }
+  if (hit("rate", e)) { if (targets().length) armRate(true); }
+  else if (k === "ArrowDown" || hit("next", e)) { e.preventDefault(); move(k === "ArrowDown" ? step : 1); }
+  else if (k === "ArrowUp" || hit("prev", e)) { e.preventDefault(); move(k === "ArrowUp" ? -step : -1); }
   else if (S.grid && k === "ArrowRight") move(1);
   else if (S.grid && k === "ArrowLeft") move(-1);
-  else if (k === "!" || (e.shiftKey && e.code === "Digit1")) bulkViewed(groupOf(S.focus));
-  else if (k === "1") setMark(targets(), "viewed", {advance:true});
-  else if (k === "2") setMark(targets(), "view_later", {advance:true});
-  else if (k === "3") setMark(targets(), "download_later", {advance:true});
-  else if (k === "4") setMark(targets(), "downloaded", {advance:true});
-  else if (k === "0") setMark(targets(), null);
-  else if (k === "x" && S.focus) { const id = S.focus; S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); const c = main.querySelector(`[data-id="${id}"] .sel`); if (c) c.checked = S.sel.has(id); renderTarget(); }
+  else if (hit("bulk", e)) bulkViewed(groupOf(S.focus));
+  else if (Object.keys(MARKS).some(m => hit(m, e))) setMark(targets(), Object.keys(MARKS).find(m => hit(m, e)), {advance:true});
+  else if (hit("unmark", e)) setMark(targets(), null);
+  else if (hit("select", e) && S.focus) { const id = S.focus; S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); const c = main.querySelector(`[data-id="${id}"] .sel`); if (c) c.checked = S.sel.has(id); renderTarget(); }
   else if (k === "Enter" && S.focus) openDrawer(S.focus, {focus: true});
   else if (k === "Escape") { disarmBulk(); setRail(false); closeDrawer(); if (S.sel.size) { S.sel.clear(); render(); } }
-  else if (k === "o" && S.focus) { const it = S.items.find(i => i.id === S.focus); if (it && siteUrl(it)) window.open(siteUrl(it), "_blank", "noreferrer"); }
-  else if (k === "u") undo();
-  else if (k === "b") setBlur(!document.body.classList.contains("blur"));
-  else if (k === "t") setHideTitles(!document.body.classList.contains("hide-titles"));
-  else if (k === "/") { e.preventDefault(); $("#q").focus(); }
-  else if (k === "?") $("#help").showModal();
+  else if (hit("site", e) && S.focus) { const it = S.items.find(i => i.id === S.focus); if (it && siteUrl(it)) window.open(siteUrl(it), "_blank", "noreferrer"); }
+  else if (hit("undo", e)) undo();
+  else if (hit("blur", e)) setBlur(!document.body.classList.contains("blur"));
+  else if (hit("titles", e)) setHideTitles(!document.body.classList.contains("hide-titles"));
+  else if (hit("search", e)) { e.preventDefault(); $("#q").focus(); }
+  else if (hit("help", e)) $("#help").showModal();
 });
+
+/* ===== key editor (in the Keyboard dialog) ===== */
+let capturing = null; // the button waiting for a key
+const ACTION_NAMES = {
+  next:"Next torrent", prev:"Previous torrent", site:"Open on the tracker", search:"Search",
+  viewed:"Viewed", view_later:"View later", download_later:"Download later", downloaded:"Downloaded",
+  unmark:"Back to New", bulk:"Mark the day viewed", undo:"Undo", rate:"Rate", select:"Select",
+  blur:"Blur posters", titles:"Blur titles", help:"Keyboard help",
+  lbPrev:"Previous screenshot", lbNext:"Next screenshot", lbReveal:"Show a blurred screenshot", lbFull:"Full size or fit",
+};
+function saveKeys() {
+  const changed = Object.fromEntries(Object.entries(KEYS).filter(([a, k]) => k !== KEY_DEFAULTS[a]));
+  if (Object.keys(changed).length) localStorage.setItem("bbt_keymap", JSON.stringify(changed));
+  else localStorage.removeItem("bbt_keymap");
+}
+function renderKeys() {
+  for (const b of document.querySelectorAll("#help [data-k]")) {
+    const a = b.dataset.k, changed = KEYS[a] !== KEY_DEFAULTS[a];
+    b.textContent = keyOf(a);
+    b.classList.toggle("changed", changed);
+    b.setAttribute("aria-label", `${ACTION_NAMES[a]}: ${keyOf(a)}${changed ? ` (default ${keyName(KEY_DEFAULTS[a])})` : ""}. Press to change.`);
+    b.title = changed ? `Default: ${keyName(KEY_DEFAULTS[a])}` : "Click to change";
+  }
+  $("#kbReset").disabled = Object.entries(KEYS).every(([a, k]) => k === KEY_DEFAULTS[a]);
+  $("#q").placeholder = `Search titles or uploaders  ( ${keyOf("search")} )`;
+  $("#helpBtn").title = `Keyboard shortcuts (${keyOf("help")})`;
+  $("#lbReveal").textContent = `Show image (${keyOf("lbReveal")})`;
+  renderBins();
+  if (S.drawer) renderDrawer();
+}
+const kbMsg = msg => { $("#kbMsg").textContent = msg; };
+function stopCapture(msg) {
+  if (!capturing) return;
+  capturing.classList.remove("capturing"); capturing = null;
+  renderKeys();
+  if (msg !== undefined) kbMsg(msg);
+}
+function startCapture(b) {
+  stopCapture();
+  capturing = b; b.classList.add("capturing"); b.textContent = "Press a key";
+  kbMsg(`Press the new key for ${ACTION_NAMES[b.dataset.k]}. Esc cancels.`);
+}
+function bindKey(a, k) {
+  // A key does one thing per place: if another action had it, that action takes this one's old key.
+  const other = Object.keys(KEYS).find(o => o !== a && KEYS[o] === k && inViewer(o) === inViewer(a));
+  const was = KEYS[a];
+  KEYS[a] = k;
+  if (other) KEYS[other] = was;
+  saveKeys();
+  return other ? `${ACTION_NAMES[a]} is now ${keyName(k)}. ${ACTION_NAMES[other]} moved to ${keyName(was)}.` : `${ACTION_NAMES[a]} is now ${keyName(k)}.`;
+}
+// Capture phase, so the dialog's own Esc and the button's Space/Enter don't fire first.
+document.addEventListener("keydown", e => {
+  if (!capturing) return;
+  if (["Shift", "Alt", "Meta", "Control", "CapsLock"].includes(e.key)) return; // wait for the real key
+  e.preventDefault(); e.stopPropagation();
+  const b = capturing, a = b.dataset.k;
+  if (e.key === "Escape") return stopCapture("No change.");
+  if (e.metaKey || e.ctrlKey || e.altKey) return kbMsg("Use one key, without ⌘, Ctrl or Option. Esc cancels.");
+  if (e.key.length !== 1) return kbMsg(`${e.key} is fixed. Pick a letter, digit or symbol. Esc cancels.`);
+  const msg = bindKey(a, e.key);
+  stopCapture(msg);
+  b.focus();
+}, true);
+$("#help").addEventListener("click", e => {
+  const b = e.target.closest("[data-k]");
+  if (b) return capturing === b ? stopCapture("No change.") : startCapture(b);
+  if (e.target.closest("#kbReset")) {
+    stopCapture();
+    KEYS = {...KEY_DEFAULTS}; saveKeys(); renderKeys();
+    kbMsg("All keys are back to their defaults.");
+  }
+});
+$("#help").addEventListener("close", () => { stopCapture(); kbMsg("Click a key to change it."); });
 
 /* ===== boot ===== */
 (async function boot() {
+  renderKeys();
   setBlur(localStorage.getItem("bbt_blur") !== "0");
   $("#sOpen").checked = localStorage.getItem("bbt_sync_on_open") === "1";
   $("#sSticky").checked = S.sticky;
