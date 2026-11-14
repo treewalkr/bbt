@@ -160,6 +160,7 @@ body:has(.drawer.open) .bin .count{font-size:18px}
 .drawer .states button{border:1px solid var(--line);background:none;border-radius:var(--r-s);padding:6px 4px;font-size:12px;color:var(--muted)}
 .drawer .states button[aria-pressed=true]{color:var(--ink);background:var(--c);border-color:var(--c);font-weight:600}
 .drawer .note{font-size:12px;color:var(--faint)}
+.drawer .note.fetching{color:var(--watch)}
 .history{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:3px}
 
 /* ---------- toast / dialogs ---------- */

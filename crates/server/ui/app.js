@@ -219,12 +219,22 @@ function renderSyncText() {
 }
 
 /* ===== drawer ===== */
-const detailsCache = new Map();
+// Screenshots come from the torrent's details page: a tracker request unless bbt has
+// them cached. So they load only on a deliberate open, or once focus rests on a torrent.
+const detailsCache = new Map(), detailsBusy = new Map(); // id -> "load" | "tracker"
+const FOLLOW_MS = 600, SLOW_MS = 400;
+let followT;
+function shotsNote(id) {
+  const busy = detailsBusy.get(id);
+  if (busy === "tracker") return `<p class="note fetching">Fetching screenshots from the tracker…</p>`;
+  if (busy === "load") return `<p class="note">Loading screenshots…</p>`;
+  return `<p class="note">Screenshots load when you stay on this torrent.</p>`;
+}
 function renderDrawer() {
   const it = S.items.find(i => i.id === S.drawer);
   if (!it) return closeDrawer();
   const d = detailsCache.get(it.id);
-  const shots = !d ? `<p class="note">Loading screenshots…</p>`
+  const shots = !d ? shotsNote(it.id)
     : d.error ? `<p class="err">Couldn't load screenshots: ${esc(d.error)}</p>`
     : d.images.length ? `<div class="shots">${d.images.map((u, i) => `<a href="${esc(u)}" data-shot="${i}" aria-label="View screenshot ${i + 1} of ${d.images.length}"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`).join("")}</div>`
     : `<p class="note">No screenshots on tracker for this torrent.</p>`;
@@ -238,14 +248,25 @@ function renderDrawer() {
   <div class="acts"><button class="primary" data-act="download" ${S.downloading ? "disabled" : ""}>${S.downloading ? "Downloading…" : "Download .torrent"}</button>${siteUrl(it) ? `<a href="${siteUrl(it)}" target="_blank" rel="noreferrer">Open on the tracker</a>` : ""}</div>
   <p class="note">Download fetches a fresh link from tracker and marks the torrent Downloaded.</p>`;
 }
-async function openDrawer(id) {
-  S.drawer = id; $("#drawer").classList.add("open"); renderDrawer();
-  if (detailsCache.has(id)) return;
+function openDrawer(id, {delay = 0} = {}) {
+  S.drawer = id; $("#drawer").classList.add("open");
+  clearTimeout(followT);
+  if (!detailsCache.has(id) && !detailsBusy.has(id)) {
+    if (delay) { followT = setTimeout(() => { if (S.drawer === id) fetchDetails(id); }, delay); }
+    else fetchDetails(id);
+  }
+  renderDrawer();
+}
+async function fetchDetails(id) {
+  detailsBusy.set(id, "load");
+  // A cache hit answers at once; anything slower is a trip to the tracker.
+  const slow = setTimeout(() => { detailsBusy.set(id, "tracker"); if (S.drawer === id) renderDrawer(); }, SLOW_MS);
   try { detailsCache.set(id, await api("GET", `/api/torrents/${id}/details`)); }
   catch (e) { detailsCache.set(id, {error: e.message}); }
+  clearTimeout(slow); detailsBusy.delete(id);
   if (S.drawer === id) renderDrawer();
 }
-function closeDrawer() { S.drawer = null; $("#drawer").classList.remove("open"); }
+function closeDrawer() { clearTimeout(followT); S.drawer = null; $("#drawer").classList.remove("open"); }
 
 async function download(id) {
   if (S.downloading) return;
@@ -390,7 +411,7 @@ function move(d) {
   const el = main.querySelector(`[data-id="${n.id}"]`);
   el?.classList.add("focus"); el?.scrollIntoView({block:"nearest"});
   renderTarget();
-  if (S.drawer) openDrawer(n.id);
+  if (S.drawer) openDrawer(n.id, {delay: FOLLOW_MS});
 }
 /* ===== bulk "mark viewed" =====
    Only unmarked torrents, and only in the lists that hold them (New, Everything),
@@ -521,8 +542,11 @@ main.addEventListener("click", e => {
   const r = e.target.closest("[data-id]"); if (!r) return;
   const id = +r.dataset.id;
   if (e.target.classList.contains("sel")) { S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); renderTarget(); return; }
+  // First click focuses; clicking the focused torrent again opens its details.
+  if (S.focus === id && S.drawer !== id) return openDrawer(id);
   main.querySelector(".focus")?.classList.remove("focus");
-  S.focus = id; r.classList.add("focus"); renderTarget(); openDrawer(id);
+  S.focus = id; r.classList.add("focus"); renderTarget();
+  if (S.drawer) openDrawer(id, {delay: FOLLOW_MS});
 });
 $("#bins").addEventListener("click", e => { const b = e.target.closest(".bin"); if (b) setMark(targets(), b.dataset.mark, {advance:true}); });
 $("#drawerIn").addEventListener("click", e => {
