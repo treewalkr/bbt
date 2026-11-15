@@ -64,6 +64,9 @@ pub struct Details {
     pub download_path: Option<String>,
     /// Absolute image URLs from the description (cover and screenshots), deduplicated.
     pub images: Vec<String>,
+    /// Links in the ScreenShot row. They usually lead to an image host's page,
+    /// not the image itself; [`page_image`] finds the picture on such a page.
+    pub screenshot_links: Vec<String>,
 }
 
 /// Parse `details.php`.
@@ -83,10 +86,58 @@ pub fn parse_details_page(html: &str) -> Details {
             images.push(src.to_string());
         }
     }
+    let mut screenshot_links: Vec<String> = Vec::new();
+    for head in doc.select(&sel("td.rowhead")) {
+        if !head
+            .text()
+            .collect::<String>()
+            .trim()
+            .eq_ignore_ascii_case("screenshot")
+        {
+            continue;
+        }
+        let Some(cell) = head.next_siblings().find_map(ElementRef::wrap) else {
+            continue;
+        };
+        for a in cell.select(&sel("a[href]")) {
+            if let Some(href) = a.value().attr("href").map(str::trim)
+                && is_web_url(href)
+                && !screenshot_links.iter().any(|l| l == href)
+            {
+                screenshot_links.push(href.to_string());
+            }
+        }
+    }
     Details {
         download_path,
         images,
+        screenshot_links,
     }
+}
+
+fn is_web_url(s: &str) -> bool {
+    s.starts_with("https://") || s.starts_with("http://")
+}
+
+/// The picture an image host's page is showing, from the tags hosts set for link
+/// previews (`og:image`, `twitter:image`, `image_src`). Banners and ads on the page
+/// are ordinary `<img>` tags and are never picked.
+pub fn page_image(html: &str) -> Option<String> {
+    let doc = Html::parse_document(html);
+    [
+        ("meta[property='og:image']", "content"),
+        ("meta[name='og:image']", "content"),
+        ("meta[name='twitter:image']", "content"),
+        ("meta[property='twitter:image']", "content"),
+        ("link[rel='image_src']", "href"),
+    ]
+    .into_iter()
+    .find_map(|(css, attr)| {
+        doc.select(&sel(css))
+            .filter_map(|e| e.value().attr(attr).map(str::trim))
+            .find(|u| is_web_url(u))
+            .map(str::to_string)
+    })
 }
 
 /// The countdown page shown before a download, and where its button leads.
