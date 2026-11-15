@@ -360,6 +360,9 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
 .sw-info .tags{flex-wrap:wrap}
 .sw-stats{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:13px;color:var(--muted)}
 .sw-stats b{color:var(--text);font-weight:600}
+.sw-site{margin:-8px 0 -8px auto;padding:8px 0;display:inline-flex;align-items:center;gap:5px;color:var(--text);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+.sw-site:hover{text-decoration-color:currentColor}
+.sw-site .ico{width:14px;height:14px}
 .hide-titles .sw-info .title{filter:blur(6px)}
 .hide-titles.peek .sw-info .title{filter:none}
 .sw-acts{display:flex;gap:12px;justify-content:center;width:min(560px,100%)}

@@ -599,7 +599,7 @@ const swSlides = it => [...new Set([it.poster_url, ...(detailsCache.get(it.id)?.
 const swBlurred = () => document.body.classList.contains("blur") && !SW.revealed;
 function swInfo(it) {
   return `<h2 class="title" title="${esc(it.title)}">${esc(clean(it.title))}</h2><div class="tags">${tags(it)}</div>
-  <div class="sw-stats"><span><b>${fmtSize(it.size_bytes)}</b> ${plural(it.files, "file")}</span><span><b>${it.seeders}</b> seeding</span><span><b>${it.leechers}</b> leeching</span><span><b>${it.snatched}</b> snatched</span><span>${fmtAgo(it.uploaded_at)}</span></div>`;
+  <div class="sw-stats"><span><b>${fmtSize(it.size_bytes)}</b> ${plural(it.files, "file")}</span><span><b>${it.seeders}</b> seeding</span><span><b>${it.leechers}</b> leeching</span><span><b>${it.snatched}</b> snatched</span><span>${fmtAgo(it.uploaded_at)}</span>${siteUrl(it) ? `<a class="sw-site" href="${esc(siteUrl(it))}" target="_blank" rel="noreferrer">Open on the tracker<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>` : ""}</div>`;
 }
 function swCardHTML(it, under) {
   const url = under ? swSlides(it)[0] : null;
@@ -631,7 +631,7 @@ function swHint() {
   h.classList.toggle("rating", !!rateArmed && SW.open);
   h.textContent = rateArmed && SW.open ? "Rate it: press 1–5, or 0 to clear."
     : touch() ? "Tap the sides to flip screenshots, or the corner button to zoom."
-    : `Space: next screenshot. Enter: full size. ${keyOf("undo")}: undo. ${keyOf("rate")}: rate. Esc: leave.`;
+    : `Space: next screenshot. Enter: full size. ${keyOf("site")}: tracker page. ${keyOf("undo")}: undo. ${keyOf("rate")}: rate. Esc: leave.`;
 }
 function renderSwipe() {
   if (!SW.open || SW.drag || SW.leaving) return;
@@ -717,6 +717,7 @@ function swipeKey(e) {
   else if (hit("lbPrev", e)) swStep(-1);
   else if (k === "Enter" || hit("open", e)) { e.preventDefault(); swFull(); }
   else if (hit("lbReveal", e)) swReveal();
+  else if (hit("site", e) && it && siteUrl(it)) window.open(siteUrl(it), "_blank", "noreferrer");
   else if (hit("undo", e)) undo();
   else if (hit("rate", e) && it) armRate(true);
   else if (hit("blur", e)) { setBlur(!document.body.classList.contains("blur")); renderSwMedia(); }
@@ -738,7 +739,7 @@ const SW_LINE = 110;
 const clamp01 = v => Math.max(0, Math.min(1, v));
 $("#swDeck").addEventListener("pointerdown", e => {
   const card = e.target.closest("#swCard");
-  if (!card || e.button !== 0 || e.target.closest("button") || SW.leaving) return;
+  if (!card || e.button !== 0 || e.target.closest("button, a") || SW.leaving) return;
   const x0 = e.clientX, y0 = e.clientY;
   let dx = 0, dy = 0, moved = false;
   card.setPointerCapture(e.pointerId); card.style.transition = "none";
