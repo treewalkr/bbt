@@ -348,6 +348,35 @@ pub fn parse_size(s: &str) -> Option<u64> {
     Some((n * mult).round() as u64)
 }
 
+/// The release code in a title, like `MIDA-859` in "[Demosaic - 1080P] - [Mida] MIDA-859",
+/// so other uploads of the same release can be found. Letters (2–6) then a hyphen then
+/// digits (3–7), standing alone; leading zeros past 3 digits are dropped, so `CAWB-0078` is `CAWB-078`.
+/// The first code wins; titles without one have none.
+pub fn release_code(title: &str) -> Option<String> {
+    let t: Vec<char> = title.to_uppercase().chars().collect();
+    let mut i = 0;
+    while i < t.len() {
+        let starts_word = i == 0 || !t[i - 1].is_alphanumeric();
+        let letters = t[i..].iter().take_while(|c| c.is_ascii_uppercase()).count();
+        if starts_word && (2..=6).contains(&letters) && t.get(i + letters) == Some(&'-') {
+            let from = i + letters + 1;
+            let digits = t[from..].iter().take_while(|c| c.is_ascii_digit()).count();
+            let ends_word = t.get(from + digits).is_none_or(|c| !c.is_alphanumeric());
+            if (3..=7).contains(&digits) && ends_word {
+                let prefix: String = t[i..i + letters].iter().collect();
+                let number: u64 = t[from..from + digits]
+                    .iter()
+                    .collect::<String>()
+                    .parse()
+                    .ok()?;
+                return Some(format!("{prefix}-{number:03}"));
+            }
+        }
+        i += letters.max(1);
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
