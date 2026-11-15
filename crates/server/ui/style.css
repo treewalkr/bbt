@@ -398,7 +398,10 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
 .sw-hint.rating{color:var(--watch)}
 .sw-done{position:absolute;inset:0;display:grid;place-content:center;padding:20px}
 body:has(#swipe:not([hidden])) .toast{bottom:12px}
-@media (max-width:760px){.swipe{padding:10px 10px 12px;gap:10px}.sw-stamp{font-size:26px}.sw-btn kbd{display:none}}
+/* Added to a phone's home screen, bbt runs full screen: keep the bottom controls clear of the home indicator. */
+.bar-wrap{padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+.swipe{padding-bottom:calc(18px + env(safe-area-inset-bottom))}
+@media (max-width:760px){.swipe{padding:10px 10px calc(12px + env(safe-area-inset-bottom));gap:10px}.sw-stamp{font-size:26px}.sw-btn kbd{display:none}}
 /* touch zoom in the viewer: the app handles pinch and pan, the browser doesn't */
 .lightbox:not(.full) .lb-stage{touch-action:none}
 #lbImg{transform-origin:0 0}

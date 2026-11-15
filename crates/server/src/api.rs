@@ -46,6 +46,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/", get(index))
         .route("/style.css", get(style))
         .route("/app.js", get(script))
+        .route("/icon.svg", get(icon_svg))
+        .route("/icon-180.png", get(icon_180))
+        .route("/icon-512.png", get(icon_512))
+        .route("/manifest.webmanifest", get(manifest))
         .route("/api/summary", get(summary))
         .route("/api/torrents", get(torrents))
         .route("/api/marks", post(set_marks))
@@ -112,6 +116,40 @@ async fn script() -> impl IntoResponse {
             NO_CACHE,
         ],
         include_str!("../ui/app.js"),
+    )
+}
+
+/// Icons and the manifest let a phone add bbt to its home screen as an app.
+const ICON_CACHE: (header::HeaderName, &str) = (header::CACHE_CONTROL, "max-age=86400");
+
+async fn icon_svg() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "image/svg+xml"), ICON_CACHE],
+        include_str!("../ui/icon.svg"),
+    )
+}
+
+async fn icon_180() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "image/png"), ICON_CACHE],
+        include_bytes!("../ui/icon-180.png").as_slice(),
+    )
+}
+
+async fn icon_512() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "image/png"), ICON_CACHE],
+        include_bytes!("../ui/icon-512.png").as_slice(),
+    )
+}
+
+async fn manifest() -> impl IntoResponse {
+    (
+        [
+            (header::CONTENT_TYPE, "application/manifest+json"),
+            NO_CACHE,
+        ],
+        include_str!("../ui/manifest.webmanifest"),
     )
 }
 
@@ -825,6 +863,30 @@ mod tests {
         assert_eq!(v["days"], json!([{"day": v["today"], "n": 2}]));
         let (st, _) = call(&app, "GET", "/api/activity?offset=90000", None).await;
         assert_eq!(st, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn serves_the_home_screen_icon_and_manifest() {
+        let (app, _dir) = app().await;
+        let (st, v) = call(&app, "GET", "/manifest.webmanifest", None).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["display"], "standalone");
+        for icon in v["icons"].as_array().unwrap() {
+            let res = app
+                .clone()
+                .oneshot(
+                    Request::get(icon["src"].as_str().unwrap())
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(res.status(), StatusCode::OK);
+            assert_eq!(
+                res.headers()[header::CONTENT_TYPE],
+                icon["type"].as_str().unwrap()
+            );
+        }
     }
 
     #[tokio::test]

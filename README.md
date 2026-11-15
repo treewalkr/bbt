@@ -23,6 +23,10 @@ addresses only, so other machines can't reach it. `docker compose logs -f` shows
 log; `docker compose down` stops it. To run without Docker against the same database,
 set `BBT_DB=data/bbt.db` in `.env`.
 
+### On your phone
+
+Open bbt in Safari (iPhone) or Chrome (Android) and choose **Add to Home Screen**. It gets its own icon and opens full screen, without the browser bar.
+
 ## Keys
 
 `j`/`k` move, `1`–`4` sort, `0` back to New, `Shift 1` mark the day's new torrents viewed (press twice above 20),
