@@ -1,7 +1,7 @@
 //! SQLite storage: torrents, the user's marks, sync history and small settings.
 
 use anyhow::Result;
-use bbt_domain::{Counts, ListedTorrent};
+use bbt_domain::{Counts, ListedTorrent, release_code};
 use rusqlite::{Connection, OptionalExtension, params};
 use std::path::Path;
 
@@ -91,6 +91,13 @@ CREATE INDEX mark_log_torrent ON mark_log (torrent_id, at);
 INSERT INTO mark_log (torrent_id, state, at) SELECT torrent_id, state, updated_at FROM marks;
 ";
 
+/// The release code read from each title (see `bbt_domain::release_code`), so
+/// other uploads of the same release can be found. Filled for old rows on upgrade.
+const SCHEMA_V7: &str = "
+ALTER TABLE torrents ADD COLUMN release TEXT;
+CREATE INDEX torrents_release ON torrents (release);
+";
+
 pub struct Store {
     pub(crate) conn: Connection,
 }
@@ -103,6 +110,19 @@ pub struct SyncRun {
     pub pages: u32,
     pub new_count: u32,
     pub stop_reason: Option<String>,
+}
+
+/// Read the release code from every stored title.
+fn fill_release_codes(conn: &Connection) -> Result<()> {
+    let titles: Vec<(u64, String)> = conn
+        .prepare("SELECT id, title FROM torrents")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut set = conn.prepare("UPDATE torrents SET release = ?2 WHERE id = ?1")?;
+    for (id, title) in titles {
+        set.execute(params![id, release_code(&title)])?;
+    }
+    Ok(())
 }
 
 impl Store {
@@ -142,6 +162,13 @@ impl Store {
             conn.execute_batch(SCHEMA_V6)?;
             conn.pragma_update(None, "user_version", 6)?;
         }
+        if version < 7 {
+            let tx = conn.unchecked_transaction()?; // the column and its values land together
+            tx.execute_batch(SCHEMA_V7)?;
+            fill_release_codes(&tx)?;
+            tx.pragma_update(None, "user_version", 7)?;
+            tx.commit()?;
+        }
         Ok(Self { conn })
     }
 
@@ -162,6 +189,7 @@ impl Store {
                     leechers=?7, free=?8, multiplier=?9, sticky=?10, stats_at=?11
                  WHERE id=?1",
             )?;
+            let mut release = tx.prepare_cached("UPDATE torrents SET release=?2 WHERE id=?1")?;
             for t in torrents {
                 let inserted = insert.execute(params![
                     t.id,
@@ -200,6 +228,7 @@ impl Store {
                         now,
                     ])?;
                 }
+                release.execute(params![t.id, release_code(&t.title)])?;
             }
         }
         tx.commit()?;

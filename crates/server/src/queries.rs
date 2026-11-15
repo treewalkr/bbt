@@ -127,6 +127,20 @@ pub struct TorrentRow {
     pub mark: Option<Mark>,
     /// 1–5 stars, `None` when unrated.
     pub rating: Option<u8>,
+    /// Release code from the title, like `MIDA-859`.
+    pub release: Option<String>,
+    /// Other uploads of the same release, oldest first.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub others: Vec<OtherUpload>,
+}
+
+/// Another torrent with the same release code.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct OtherUpload {
+    pub id: u64,
+    pub title: String,
+    pub uploaded_at: i64,
+    pub mark: Option<Mark>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -151,7 +165,8 @@ impl Store {
         let mut sql = String::from(
             "SELECT t.id, t.category, t.title, t.poster_url, t.preview_url, t.uploaded_at,
                     t.size_bytes, t.files, t.snatched, t.seeders, t.leechers, t.free,
-                    t.multiplier, t.uploader, t.sticky, t.stats_at, m.state, t.hash_id, r.stars
+                    t.multiplier, t.uploader, t.sticky, t.stats_at, m.state, t.hash_id, r.stars,
+                    t.release
              FROM torrents t LEFT JOIN marks m ON m.torrent_id = t.id
                              LEFT JOIN ratings r ON r.torrent_id = t.id WHERE 1=1",
         );
@@ -194,10 +209,48 @@ impl Store {
         args.push(Box::new(limit));
 
         let mut stmt = self.conn.prepare(&sql)?;
-        let rows = stmt
+        let mut rows = stmt
             .query_map(params_from_iter(args.iter()), row_to_torrent)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
+        self.attach_others(&mut rows)?;
         Ok(rows)
+    }
+
+    /// Fill `others` from every torrent sharing a release code with another.
+    fn attach_others(&self, rows: &mut [TorrentRow]) -> Result<()> {
+        if rows.iter().all(|r| r.release.is_none()) {
+            return Ok(());
+        }
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT t.release, t.id, t.title, t.uploaded_at, m.state
+             FROM torrents t LEFT JOIN marks m ON m.torrent_id = t.id
+             WHERE t.release IN (SELECT release FROM torrents WHERE release IS NOT NULL
+                                 GROUP BY release HAVING COUNT(*) > 1)
+             ORDER BY t.uploaded_at, t.id",
+        )?;
+        let mut by_release: std::collections::HashMap<String, Vec<OtherUpload>> =
+            Default::default();
+        for row in stmt.query_map([], |r| {
+            let state: Option<String> = r.get(4)?;
+            Ok((
+                r.get::<_, String>(0)?,
+                OtherUpload {
+                    id: r.get(1)?,
+                    title: r.get(2)?,
+                    uploaded_at: r.get(3)?,
+                    mark: state.as_deref().and_then(Mark::parse),
+                },
+            ))
+        })? {
+            let (release, other) = row?;
+            by_release.entry(release).or_default().push(other);
+        }
+        for row in rows {
+            if let Some(all) = row.release.as_ref().and_then(|c| by_release.get(c)) {
+                row.others = all.iter().filter(|o| o.id != row.id).cloned().collect();
+            }
+        }
+        Ok(())
     }
 
     /// Set (or clear, with `None`) the mark on each id. Returns the previous marks
@@ -369,6 +422,8 @@ fn row_to_torrent(r: &Row) -> rusqlite::Result<TorrentRow> {
         stats_at: r.get(15)?,
         mark: state.as_deref().and_then(Mark::parse),
         rating: r.get(18)?,
+        release: r.get(19)?,
+        others: Vec::new(),
     })
 }
 
@@ -523,6 +578,36 @@ mod tests {
         );
         assert!(s.mark_history(999).unwrap().is_empty());
         assert_eq!(ids(&s.list_torrents(&Filter::default()).unwrap()), [3, 2]);
+    }
+
+    #[test]
+    fn lists_other_uploads_of_the_same_release() {
+        let mut s = Store::open_in_memory().unwrap();
+        s.upsert_torrents(
+            &[
+                t(1, 3, 100, 0, "[Reducing Mosaic]MIDA-859", false),
+                t(2, 3, 200, 0, "[Demosaic - 1080P] - [Mida] MIDA-859", false),
+                t(3, 3, 300, 0, "Something else", false),
+            ],
+            400,
+        )
+        .unwrap();
+        s.set_marks(&[1], Some(Mark::Viewed), 500).unwrap();
+        let rows = s.list_torrents(&Filter::default()).unwrap();
+        let by_id = |id: u64| rows.iter().find(|r| r.id == id).unwrap();
+        assert_eq!(by_id(2).release.as_deref(), Some("MIDA-859"));
+        let others: Vec<(u64, Option<Mark>)> =
+            by_id(2).others.iter().map(|o| (o.id, o.mark)).collect();
+        assert_eq!(others, [(1, Some(Mark::Viewed))]);
+        assert!(by_id(3).others.is_empty() && by_id(3).release.is_none());
+        // Only New is listed, but the viewed upload still shows as the other one.
+        let new = s
+            .list_torrents(&Filter {
+                view: View::New,
+                ..Filter::default()
+            })
+            .unwrap();
+        assert_eq!(new.iter().find(|r| r.id == 2).unwrap().others[0].id, 1);
     }
 
     #[test]
