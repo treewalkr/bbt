@@ -31,7 +31,7 @@ To change a key, press `?` and click it; Reset to defaults puts them all back.
 
 `s` (or **Swipe** in the toolbar) shows new torrents one card at a time: `←` or swipe left passes (Viewed),
 `↑` saves for later (View later), `→` keeps (Download later). `Space` flips screenshots, `Enter` shows one full size.
-Screenshots load only for a card you stay on, through the usual 3-second tracker pacing.
+Screenshots for the card you are on and the next 2 load through the usual 3-second tracker pacing, one card at a time; change how many cards load ahead (0–5) in Settings.
 
 ## Sync limits
 

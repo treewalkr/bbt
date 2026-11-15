@@ -159,6 +159,12 @@
     <label for="sBlur">Blur posters when bbt opens</label><input id="sBlur" type="checkbox">
     <label for="sHide">Blur titles when bbt opens</label><input id="sHide" type="checkbox">
   </div>
+  <h4>Swipe mode</h4>
+  <div class="set">
+    <label for="sBuffer">Cards to load ahead</label>
+    <select id="sBuffer"><option value="0">None</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
+    <span class="hint">Screenshots for the next cards load while you look at this one. Each card asks the tracker for one page, one at a time, 3 seconds apart, and never again once saved. None asks only for a card you stay on.</span>
+  </div>
   <h4>Keyboard</h4>
   <div class="set">
     <label for="sKeys">Single-key shortcuts</label><input id="sKeys" type="checkbox">

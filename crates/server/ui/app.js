@@ -320,6 +320,7 @@ async function fetchDetails(id) {
 function detailsChanged(id) {
   if (S.drawer === id) renderDrawer();
   if (SW.open && SW.cur === id) renderSwMedia();
+  else if (SW.open) swPrefetch();
 }
 function closeDrawer() {
   const inside = $("#drawer").contains(document.activeElement);
@@ -586,7 +587,7 @@ function bulkViewed(g) {
    Pass, Later and Keep are the Viewed, View later and Download later marks.
    The pile is the New list as filtered when swipe mode opens. A card is on the pile
    while it has no mark, so Undo puts it straight back on top. */
-const SW = {open:false, order:[], pending:new Set(), cur:null, photo:0, revealed:false, fetchT:null, drag:false, leaving:false};
+const SW = {open:false, order:[], pending:new Set(), cur:null, photo:0, revealed:false, fetchT:null, drag:false, leaving:false, pf:null, pfStop:false};
 const SW_DIR = {viewed:[-1, 0], view_later:[0, -1], download_later:[1, 0], downloaded:[0, 1]};
 const SW_STAMP = {viewed:"Pass", view_later:"Later", download_later:"Keep"};
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -608,6 +609,26 @@ function swCardHTML(it, under) {
   ${under ? "" : Object.entries(SW_STAMP).map(([k, l]) => `<span class="sw-stamp" data-stamp="${k}" aria-hidden="true">${l}</span>`).join("")}
   <div class="sw-info">${swInfo(it)}</div></article>`;
 }
+// Preload the next few cards: their details (one tracker page each, one at a time, after
+// the current card's) and every screenshot (image hosts, not the tracker).
+const swBuffer = () => Math.max(0, Math.min(5, +(localStorage.getItem("bbt_sw_buffer") ?? 2) || 0));
+const preloaded = new Set();
+function preload(url) { if (url && !preloaded.has(url)) { preloaded.add(url); new Image().src = url; } }
+function swPrefetch() {
+  if (!SW.open) return;
+  const ahead = swPile().slice(0, 1 + swBuffer());
+  for (const it of ahead.slice(1)) swSlides(it).forEach(preload);
+  const now = detailsCache.get(ahead[0]?.id);
+  if (SW.pf || SW.pfStop || !now || now.error) return; // the card on screen goes first, and an error stops it
+  const next = ahead.slice(1).find(it => !detailsCache.has(it.id) && !detailsBusy.has(it.id));
+  if (!next) return;
+  SW.pf = next.id;
+  fetchDetails(next.id).then(() => {
+    SW.pf = null;
+    if (detailsCache.get(next.id)?.error) SW.pfStop = true; // a captcha or a warning: stop asking
+    swPrefetch();
+  });
+}
 function renderSwMedia() {
   const it = swCurrent(), m = $("#swCard .sw-media");
   if (!it || !m || it.id !== SW.cur) return;
@@ -624,7 +645,8 @@ function renderSwMedia() {
   ${slides.length > 1 ? `<div class="sw-bars" aria-hidden="true">${slides.map((_, i) => `<i class="${i === SW.photo ? "on" : ""}"></i>`).join("")}</div>` : ""}${note}
   ${url ? `<button class="sw-zoom" data-sw="zoom" aria-label="View full screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-6 6M4 20l6-6"/></svg></button>` : ""}
   ${url && swBlurred() ? `<button class="sw-reveal" data-sw="reveal">Show (${esc(keyOf("lbReveal"))})</button>` : ""}`;
-  if (slides[SW.photo + 1]) new Image().src = slides[SW.photo + 1];
+  slides.forEach(preload);
+  swPrefetch();
 }
 function swHint() {
   const h = $("#swHint"); if (!h) return;
@@ -938,6 +960,7 @@ $("#sOpen").onchange = e => localStorage.setItem("bbt_sync_on_open", e.target.ch
 $("#sSticky").onchange = e => { S.sticky = e.target.checked; localStorage.setItem("bbt_sticky", S.sticky ? "1" : "0"); load(); };
 $("#sKeys").onchange = e => { S.keys = e.target.checked; localStorage.setItem("bbt_keys", S.keys ? "1" : "0"); };
 $("#sBlur").onchange = e => localStorage.setItem("bbt_blur", e.target.checked ? "1" : "0");
+$("#sBuffer").onchange = e => localStorage.setItem("bbt_sw_buffer", e.target.value);
 $("#sHide").onchange = e => localStorage.setItem("bbt_hide_titles", e.target.checked ? "1" : "0");
 document.addEventListener("keydown", e => {
   if (capturing) return; // the key editor takes this one
@@ -1072,6 +1095,7 @@ $("#help").addEventListener("close", () => { stopCapture(); kbMsg("Click a key t
   $("#sOpen").checked = localStorage.getItem("bbt_sync_on_open") === "1";
   $("#sSticky").checked = S.sticky;
   $("#sKeys").checked = S.keys;
+  $("#sBuffer").value = swBuffer();
   $("#sBlur").checked = localStorage.getItem("bbt_blur") !== "0";
   setHideTitles(localStorage.getItem("bbt_hide_titles") === "1");
   $("#sHide").checked = localStorage.getItem("bbt_hide_titles") === "1";
