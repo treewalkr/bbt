@@ -1,4 +1,4 @@
-use bbt_domain::{page_image, parse_details_page};
+use bbt_domain::{Counts, page_image, parse_details_page};
 
 const PAGE: &str = include_str!("fixtures/details_page.html");
 
@@ -20,6 +20,22 @@ fn finds_download_link_and_screenshots() {
         ]
     );
     assert_eq!(d.screenshot_links, ["https://imgbb.ws/AAAA"]);
+    assert_eq!(
+        d.counts,
+        Some(Counts {
+            seeders: 17,
+            leechers: 8,
+            snatched: 21
+        })
+    );
+}
+
+#[test]
+fn no_counts_when_a_row_is_missing_or_odd() {
+    let peers = "<table><tr><td class=rowhead>Peers</td><td>3 Seeder(s), 1 Leecher(s)</td></tr>";
+    assert_eq!(parse_details_page(peers).counts, None);
+    let odd = format!("{peers}<tr><td class=rowhead>Snatched</td><td>many</td></tr></table>");
+    assert_eq!(parse_details_page(&odd).counts, None);
 }
 
 #[test]
@@ -58,4 +74,5 @@ fn empty_when_nothing_found() {
     assert_eq!(d.download_path, None);
     assert!(d.images.is_empty());
     assert!(d.screenshot_links.is_empty());
+    assert_eq!(d.counts, None);
 }

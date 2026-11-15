@@ -67,6 +67,16 @@ pub struct Details {
     /// Links in the ScreenShot row. They usually lead to an image host's page,
     /// not the image itself; [`page_image`] finds the picture on such a page.
     pub screenshot_links: Vec<String>,
+    /// Live peer counts, when the page shows them.
+    pub counts: Option<Counts>,
+}
+
+/// Seeders, leechers and snatches as the details page shows them right now.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct Counts {
+    pub seeders: u32,
+    pub leechers: u32,
+    pub snatched: u32,
 }
 
 /// Parse `details.php`.
@@ -87,18 +97,7 @@ pub fn parse_details_page(html: &str) -> Details {
         }
     }
     let mut screenshot_links: Vec<String> = Vec::new();
-    for head in doc.select(&sel("td.rowhead")) {
-        if !head
-            .text()
-            .collect::<String>()
-            .trim()
-            .eq_ignore_ascii_case("screenshot")
-        {
-            continue;
-        }
-        let Some(cell) = head.next_siblings().find_map(ElementRef::wrap) else {
-            continue;
-        };
+    for cell in row_cells(&doc, "screenshot") {
         for a in cell.select(&sel("a[href]")) {
             if let Some(href) = a.value().attr("href").map(str::trim)
                 && is_web_url(href)
@@ -112,7 +111,37 @@ pub fn parse_details_page(html: &str) -> Details {
         download_path,
         images,
         screenshot_links,
+        counts: parse_counts(&doc),
     }
+}
+
+/// The value cells of every `rowhead` row with this label.
+fn row_cells<'a>(doc: &'a Html, label: &'a str) -> impl Iterator<Item = ElementRef<'a>> + 'a {
+    doc.select(&SEL_ROWHEAD)
+        .filter(move |h| {
+            h.text()
+                .collect::<String>()
+                .trim()
+                .eq_ignore_ascii_case(label)
+        })
+        .filter_map(|h| h.next_siblings().find_map(ElementRef::wrap))
+}
+
+static SEL_ROWHEAD: std::sync::LazyLock<Selector> = std::sync::LazyLock::new(|| sel("td.rowhead"));
+
+/// "17 Seeder(s), 8 Leecher(s) = 25 Peer(s) total" and "Snatched 21 View Snatched".
+fn parse_counts(doc: &Html) -> Option<Counts> {
+    let peers: String = row_cells(doc, "peers").next()?.text().collect();
+    let before = |word: &str| -> Option<u32> {
+        let at = peers.find(word)?;
+        peers[..at].split_whitespace().last()?.parse().ok()
+    };
+    let snatched: String = row_cells(doc, "snatched").next()?.text().collect();
+    Some(Counts {
+        seeders: before("Seeder")?,
+        leechers: before("Leecher")?,
+        snatched: snatched.split_whitespace().next()?.parse().ok()?,
+    })
 }
 
 fn is_web_url(s: &str) -> bool {
