@@ -63,7 +63,7 @@ const S = {
   view:"new", cats:loadCats(), range:"0", from:"", sort:"new", q:"",
   grid:false, free:false, sticky:localStorage.getItem("bbt_sticky")==="1",
   items:[], summary:null, lastVisit:null, focus:null, sel:new Set(), undos:[], drawer:null,
-  syncing:false, refreshing:null, loadSeq:0, keys:localStorage.getItem("bbt_keys") !== "0",
+  syncing:false, downloading:new Set(), refreshing:new Set(), loadSeq:0, keys:localStorage.getItem("bbt_keys") !== "0",
 };
 const $ = s => document.querySelector(s);
 const touch = () => matchMedia("(pointer: coarse)").matches;
@@ -290,11 +290,11 @@ function renderDrawer() {
   $("#drawerIn").innerHTML = `<header><span>${catsOn() ? esc(CATS[it.category] ?? `Category ${it.category}`) + " " : ""}<span style="color:var(--faint)">#${it.id}</span></span><button class="close" aria-label="Close details" data-act="close"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
   <div class="big">${poster(it)}<div style="display:flex;flex-direction:column;gap:10px"><h4 tabindex="-1">${esc(clean(it.title))}</h4>
   <dl><dt>Uploaded</dt><dd>${fmtWhen(it.uploaded_at)}</dd><dt>By</dt><dd>${esc(it.uploader ?? "Anonymous")}</dd><dt>Size</dt><dd>${fmtSize(it.size_bytes)}, ${it.files} file${it.files === 1 ? "" : "s"}</dd></dl></div></div>
-  <dl><dt>Seeding</dt><dd>${it.seeders}</dd><dt>Leeching</dt><dd>${it.leechers}</dd><dt>Snatched</dt><dd>${it.snatched}</dd><dt>Free download</dt><dd>${it.free ? esc(it.free) : "No"}</dd><dt>Counts updated</dt><dd>${fmtAgo(it.stats_at)} <button class="linkbtn" data-act="refresh" ${S.refreshing ? "disabled" : ""}>${S.refreshing === it.id ? "Refreshing…" : "Refresh"}</button></dd></dl>
+  <dl><dt>Seeding</dt><dd>${it.seeders}</dd><dt>Leeching</dt><dd>${it.leechers}</dd><dt>Snatched</dt><dd>${it.snatched}</dd><dt>Free download</dt><dd>${it.free ? esc(it.free) : "No"}</dd><dt>Counts updated</dt><dd>${fmtAgo(it.stats_at)} <button class="linkbtn" data-act="refresh" ${S.refreshing.has(it.id) ? "disabled" : ""}>${S.refreshing.has(it.id) ? "Refreshing…" : "Refresh"}</button></dd></dl>
   ${shots}
   <div class="rate-row"><div class="rate" role="group" aria-label="Your rating">${[5, 4, 3, 2, 1].map(n => `<button data-rate="${n}" class="${it.rating >= n ? "on" : ""}" aria-pressed="${it.rating === n}" aria-label="${n} star${n === 1 ? "" : "s"}">★</button>`).join("")}</div><span class="note">${it.rating ? `${it.rating} of 5. ${touch() ? "Tap" : "Click"} it again to clear.` : touch() ? "Not rated." : `Not rated. Press ${keyOf("rate")} then 1–5.`}</span></div>
   <div class="states" role="group" aria-label="Sort into">${[["", {label:"New", c:"var(--new)"}], ...Object.entries(MARKS)].map(([k, m]) => `<button data-set="${k}" style="--c:${m.c}" aria-pressed="${(it.mark ?? "") === k}"><kbd>${keyOf(k || "unmark")}</kbd>${m.label}</button>`).join("")}</div>
-  <div class="acts"><button class="primary" data-act="download" ${S.downloading ? "disabled" : ""}>${S.downloading ? "Downloading…" : "Download .torrent"}</button>${siteUrl(it) ? `<a href="${siteUrl(it)}" target="_blank" rel="noreferrer">Open on the tracker</a>` : ""}</div>
+  <div class="acts"><button class="primary" data-act="download" ${S.downloading.has(it.id) ? "disabled" : ""}>${S.downloading.has(it.id) ? "Downloading…" : "Download .torrent"}</button>${siteUrl(it) ? `<a href="${siteUrl(it)}" target="_blank" rel="noreferrer">Open on the tracker</a>` : ""}</div>
   <p class="note">Download fetches a fresh link from tracker and marks the torrent Downloaded.</p>`;
   if (hadFocus) $("#drawerIn h4").focus();
 }
@@ -326,15 +326,15 @@ function applyCounts(id, counts) {
 }
 // Read the details page again for live counts: one tracker request, only when asked.
 async function refreshCounts(id) {
-  if (S.refreshing) return;
-  S.refreshing = id; renderDrawer();
+  if (S.refreshing.has(id)) return;
+  S.refreshing.add(id); if (S.drawer === id) renderDrawer();
   try {
     const d = await api("POST", `/api/torrents/${id}/refresh`);
     detailsCache.set(id, {images: d.images});
     if (d.counts) applyCounts(id, d.counts);
     else toast("The tracker page didn't show counts.", false);
   } catch (e) { toast(`Couldn't refresh counts: ${e.message}`, false); }
-  S.refreshing = null;
+  S.refreshing.delete(id);
   detailsChanged(id);
 }
 function detailsChanged(id) {
@@ -349,8 +349,9 @@ function closeDrawer() {
 }
 
 async function download(id) {
-  if (S.downloading) return;
-  S.downloading = true; renderDrawer();
+  // Each torrent has its own button; the server queues their tracker requests.
+  if (S.downloading.has(id)) return;
+  S.downloading.add(id); if (S.drawer === id) renderDrawer();
   try {
     const res = await fetch(`/api/torrents/${id}/download`);
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
@@ -365,7 +366,7 @@ async function download(id) {
   } catch (e) {
     toast(`Download failed: ${e.message}`, false);
   } finally {
-    S.downloading = false; if (S.drawer === id) renderDrawer();
+    S.downloading.delete(id); if (S.drawer === id) renderDrawer();
   }
 }
 
