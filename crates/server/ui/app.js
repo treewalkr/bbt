@@ -62,8 +62,8 @@ function saveCats() {
 const S = {
   view:"new", cats:loadCats(), range:"0", from:"", sort:"new", q:"",
   grid:false, free:false, sticky:localStorage.getItem("bbt_sticky")==="1",
-  items:[], summary:null, lastVisit:null, focus:null, sel:new Set(), undo:null, drawer:null,
-  syncing:false, loadSeq:0, keys:localStorage.getItem("bbt_keys") !== "0",
+  items:[], summary:null, lastVisit:null, focus:null, sel:new Set(), undos:[], drawer:null,
+  syncing:false, refreshing:null, loadSeq:0, keys:localStorage.getItem("bbt_keys") !== "0",
 };
 const $ = s => document.querySelector(s);
 const touch = () => matchMedia("(pointer: coarse)").matches;
@@ -96,7 +96,7 @@ const fmtTime = t => new Date(t * 1000).toLocaleTimeString("en-GB", {hour:"2-dig
 const fmtWhen = t => new Date(t * 1000).toLocaleString("en-GB", {day:"numeric", month:"short", hour:"2-digit", minute:"2-digit", timeZone:"Asia/Bangkok"});
 function fmtAgo(t) {
   const m = (nowSec() - t) / 60;
-  return m < 60 ? Math.max(1, Math.round(m)) + " min ago" : m < 1440 ? Math.round(m / 60) + " h ago" : Math.round(m / 1440) + " d ago";
+  return m < 1 ? "just now" : m < 60 ? Math.round(m) + " min ago" : m < 1440 ? Math.round(m / 60) + " h ago" : Math.round(m / 1440) + " d ago";
 }
 function fmtSize(b) {
   const gb = b / 1073741824;
@@ -290,7 +290,7 @@ function renderDrawer() {
   $("#drawerIn").innerHTML = `<header><span>${catsOn() ? esc(CATS[it.category] ?? `Category ${it.category}`) + " " : ""}<span style="color:var(--faint)">#${it.id}</span></span><button class="close" aria-label="Close details" data-act="close"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
   <div class="big">${poster(it)}<div style="display:flex;flex-direction:column;gap:10px"><h4 tabindex="-1">${esc(clean(it.title))}</h4>
   <dl><dt>Uploaded</dt><dd>${fmtWhen(it.uploaded_at)}</dd><dt>By</dt><dd>${esc(it.uploader ?? "Anonymous")}</dd><dt>Size</dt><dd>${fmtSize(it.size_bytes)}, ${it.files} file${it.files === 1 ? "" : "s"}</dd></dl></div></div>
-  <dl><dt>Seeding</dt><dd>${it.seeders}</dd><dt>Leeching</dt><dd>${it.leechers}</dd><dt>Snatched</dt><dd>${it.snatched}</dd><dt>Free download</dt><dd>${it.free ? esc(it.free) : "No"}</dd><dt>Counts updated</dt><dd>${fmtAgo(it.stats_at)}</dd></dl>
+  <dl><dt>Seeding</dt><dd>${it.seeders}</dd><dt>Leeching</dt><dd>${it.leechers}</dd><dt>Snatched</dt><dd>${it.snatched}</dd><dt>Free download</dt><dd>${it.free ? esc(it.free) : "No"}</dd><dt>Counts updated</dt><dd>${fmtAgo(it.stats_at)} <button class="linkbtn" data-act="refresh" ${S.refreshing ? "disabled" : ""}>${S.refreshing === it.id ? "Refreshing…" : "Refresh"}</button></dd></dl>
   ${shots}
   <div class="rate-row"><div class="rate" role="group" aria-label="Your rating">${[5, 4, 3, 2, 1].map(n => `<button data-rate="${n}" class="${it.rating >= n ? "on" : ""}" aria-pressed="${it.rating === n}" aria-label="${n} star${n === 1 ? "" : "s"}">★</button>`).join("")}</div><span class="note">${it.rating ? `${it.rating} of 5. ${touch() ? "Tap" : "Click"} it again to clear.` : touch() ? "Not rated." : `Not rated. Press ${keyOf("rate")} then 1–5.`}</span></div>
   <div class="states" role="group" aria-label="Sort into">${[["", {label:"New", c:"var(--new)"}], ...Object.entries(MARKS)].map(([k, m]) => `<button data-set="${k}" style="--c:${m.c}" aria-pressed="${(it.mark ?? "") === k}"><kbd>${keyOf(k || "unmark")}</kbd>${m.label}</button>`).join("")}</div>
@@ -312,9 +312,29 @@ async function fetchDetails(id) {
   detailsBusy.set(id, "load");
   // A cache hit answers at once; anything slower is a trip to the tracker.
   const slow = setTimeout(() => { detailsBusy.set(id, "tracker"); detailsChanged(id); }, SLOW_MS);
-  try { detailsCache.set(id, await api("GET", `/api/torrents/${id}/details`)); }
-  catch (e) { detailsCache.set(id, {error: e.message}); }
+  try {
+    const d = await api("GET", `/api/torrents/${id}/details`);
+    detailsCache.set(id, d);
+    if (d.counts) applyCounts(id, d.counts); // a fresh page brings live counts
+  } catch (e) { detailsCache.set(id, {error: e.message}); }
   clearTimeout(slow); detailsBusy.delete(id);
+  detailsChanged(id);
+}
+function applyCounts(id, counts) {
+  const it = S.items.find(i => i.id === id);
+  if (it) { Object.assign(it, counts); render(); }
+}
+// Read the details page again for live counts: one tracker request, only when asked.
+async function refreshCounts(id) {
+  if (S.refreshing) return;
+  S.refreshing = id; renderDrawer();
+  try {
+    const d = await api("POST", `/api/torrents/${id}/refresh`);
+    detailsCache.set(id, {images: d.images});
+    if (d.counts) applyCounts(id, d.counts);
+    else toast("The tracker page didn't show counts.", false);
+  } catch (e) { toast(`Couldn't refresh counts: ${e.message}`, false); }
+  S.refreshing = null;
   detailsChanged(id);
 }
 function detailsChanged(id) {
@@ -501,7 +521,7 @@ async function setMark(ids, mark, {advance = false} = {}) {
   let res;
   try { res = await api("POST", "/api/marks", {ids, mark}); }
   catch (e) { toast(`Couldn't save: ${e.message}`, false); return load(); }
-  S.undo = {kind: "mark", previous: res.previous, mark};
+  pushUndo({kind: "mark", previous: res.previous, mark});
   count(mark, ids.length);
   const nodes = leaving ? ids.map(id => main.querySelector(`[data-id="${id}"]`)).filter(Boolean) : [];
   const apply = () => {
@@ -514,9 +534,15 @@ async function setMark(ids, mark, {advance = false} = {}) {
   const where = mark ? MARKS[mark].label : "New";
   toast(`${plural(ids.length, "torrent")} moved to ${where}`);
 }
-async function undo() {
-  if (!S.undo?.previous.length) return;
-  const {kind, previous: prev, mark} = S.undo; S.undo = null;
+// Every change can be undone, newest first, back through the last UNDO_MAX of them.
+const UNDO_MAX = 50;
+function pushUndo(u) { if (u.previous?.length) { S.undos.push(u); if (S.undos.length > UNDO_MAX) S.undos.shift(); } }
+let undoChain = Promise.resolve();
+const undo = () => (undoChain = undoChain.then(undoOne)); // presses in a row undo one change each, in order
+async function undoOne() {
+  const u = S.undos.pop();
+  if (!u) return toast("Nothing left to undo", false);
+  const {kind, previous: prev, mark} = u;
   if (kind === "mark") count(mark, -prev.length);
   const key = kind === "mark" ? "mark" : "stars";
   const byValue = new Map();
@@ -524,7 +550,9 @@ async function undo() {
   try { for (const [v, ids] of byValue) await api("POST", kind === "mark" ? "/api/marks" : "/api/ratings", {ids, [key]: v === "" ? null : v}); }
   catch (e) { toast(`Undo failed: ${e.message}`, false); }
   S.focus = prev[0].id;
-  await load(); scrollFocus(); toast("Change undone", false);
+  await load(); scrollFocus();
+  const left = S.undos.length;
+  toast(left ? `Change undone. ${plural(left, "more change")} to undo` : "Change undone. Nothing left to undo", left > 0);
 }
 const targets = () => S.sel.size ? [...S.sel] : S.focus ? [S.focus] : [];
 function scrollFocus() { main.querySelector(`[data-id="${S.focus}"]`)?.scrollIntoView({block:"nearest"}); }
@@ -834,7 +862,7 @@ async function setRating(ids, stars) {
   let res;
   try { res = await api("POST", "/api/ratings", {ids, stars}); }
   catch (e) { return toast(`Couldn't save rating: ${e.message}`, false); }
-  S.undo = {kind: "rating", previous: res.previous};
+  pushUndo({kind: "rating", previous: res.previous});
   S.items.forEach(i => { if (ids.includes(i.id)) i.rating = stars; });
   S.sel.clear();
   if (S.sort === "rating") await load(); else render();
@@ -909,6 +937,7 @@ $("#drawerIn").addEventListener("click", e => {
   if (e.target.closest("[data-act=close]")) return closeDrawer();
   if (e.target.closest("[data-act=retry]")) { detailsCache.delete(S.drawer); return openDrawer(S.drawer); }
   if (e.target.closest("[data-act=download]")) return download(S.drawer);
+  if (e.target.closest("[data-act=refresh]")) return refreshCounts(S.drawer);
 });
 function showView(v) { S.view = v; S.focus = null; S.picked = false; S.sel.clear(); main.scrollTop = 0; setRail(false); load(); }
 // Below 760px the rail is a sheet and the toolbar controls fold into View.

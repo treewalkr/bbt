@@ -26,13 +26,16 @@ set `BBT_DB=data/bbt.db` in `.env`.
 ## Keys
 
 `j`/`k` move, `1`–`4` sort, `0` back to New, `Shift 1` mark the day's new torrents viewed (press twice above 20),
-`Enter` or `l` (or a second click) details, `u` undo, `/` search, `?` all shortcuts.
+`Enter` or `l` (or a second click) details, `u` undo (again and again, up to 50 changes back), `/` search, `?` all shortcuts.
 To change a key, press `?` and click it; Reset to defaults puts them all back.
 
 `s` (or **Swipe** in the toolbar) shows new torrents one card at a time: `←` or swipe left passes (Viewed),
 `↑` saves for later (View later), `→` keeps (Download later). `Space` flips screenshots, `Enter` shows one full size.
 Screenshots for the card you are on and the next 2 load through the usual 3-second tracker pacing, one card at a time; change how many cards load ahead (0–5) in Settings.
 Screenshots come from the description and from the links in the ScreenShot row: for a link to an image host's page, bbt reads the picture the page names for link previews (`og:image`) and skips the page's banners and ads. Only public hosts are read, never the tracker or your own network.
+
+Seeding, leeching and snatched counts come from the last sync that saw the torrent on a list page, so older torrents' counts go stale.
+The first time a torrent's details load, its counts are updated from that page at no extra cost. **Refresh** next to Counts updated reads the page again: one tracker request, at most once a minute per torrent.
 
 ## Sync limits
 
