@@ -169,9 +169,17 @@ function groups() {
 }
 
 /* ===== render ===== */
+// Another upload of the same release: show how you sorted it (or that it exists).
+function otherTag(it) {
+  if (!it.others?.length) return "";
+  const o = it.others.find(o => o.mark) ?? it.others[0];
+  const label = o.mark ? `Other upload ${MARKS[o.mark].label.toLowerCase()}` : "Also uploaded";
+  const tip = it.others.map(o => `${o.title} (${o.mark ? MARKS[o.mark].label : "New"})`).join("\n");
+  return `<span class="tag ${o.mark ? "state" : ""}" ${o.mark ? `style="--state:${MARKS[o.mark].c}"` : ""} title="${esc(tip)}">${label}</span>`;
+}
 function tags(it) {
   const mark = S.view === "all" && it.mark ? `<span class="tag state" style="--state:${MARKS[it.mark].c}">${MARKS[it.mark].label}</span>` : "";
-  return `${catsOn() ? `<span class="tag">${esc(CATS[it.category] ?? `Category ${it.category}`)}</span>` : ""}${it.sticky ? '<span class="tag sticky">Sticky</span>' : ""}${it.free ? '<span class="tag free">Free</span>' : ""}${it.multiplier ? `<span class="tag free">${esc(it.multiplier)} up</span>` : ""}${mark}${it.rating ? `<span class="stars" title="Your rating: ${it.rating} of 5">★${it.rating}</span>` : ""}<span>${esc(it.uploader ?? "")}</span>`;
+  return `${catsOn() ? `<span class="tag">${esc(CATS[it.category] ?? `Category ${it.category}`)}</span>` : ""}${it.sticky ? '<span class="tag sticky">Sticky</span>' : ""}${it.free ? '<span class="tag free">Free</span>' : ""}${it.multiplier ? `<span class="tag free">${esc(it.multiplier)} up</span>` : ""}${mark}${otherTag(it)}${it.rating ? `<span class="stars" title="Your rating: ${it.rating} of 5">★${it.rating}</span>` : ""}<span>${esc(it.uploader ?? "")}</span>`;
 }
 const stateOf = it => it.mark ?? "new";
 const stateAttr = it => ({viewed:"viewed", view_later:"watch", download_later:"get", downloaded:"got", new:"new"})[stateOf(it)];
@@ -291,12 +299,49 @@ function renderDrawer() {
   <div class="big">${poster(it)}<div style="display:flex;flex-direction:column;gap:10px"><h4 tabindex="-1">${esc(clean(it.title))}</h4>
   <dl><dt>Uploaded</dt><dd>${fmtWhen(it.uploaded_at)}</dd><dt>By</dt><dd>${esc(it.uploader ?? "Anonymous")}</dd><dt>Size</dt><dd>${fmtSize(it.size_bytes)}, ${it.files} file${it.files === 1 ? "" : "s"}</dd></dl></div></div>
   <dl><dt>Seeding</dt><dd>${it.seeders}</dd><dt>Leeching</dt><dd>${it.leechers}</dd><dt>Snatched</dt><dd>${it.snatched}</dd><dt>Free download</dt><dd>${it.free ? esc(it.free) : "No"}</dd><dt>Counts updated</dt><dd>${fmtAgo(it.stats_at)} <button class="linkbtn" data-act="refresh" ${S.refreshing.has(it.id) ? "disabled" : ""}>${S.refreshing.has(it.id) ? "Refreshing…" : "Refresh"}</button></dd></dl>
+  ${othersHTML(it)}
+  ${historyHTML(it)}
   ${shots}
   <div class="rate-row"><div class="rate" role="group" aria-label="Your rating">${[5, 4, 3, 2, 1].map(n => `<button data-rate="${n}" class="${it.rating >= n ? "on" : ""}" aria-pressed="${it.rating === n}" aria-label="${n} star${n === 1 ? "" : "s"}">★</button>`).join("")}</div><span class="note">${it.rating ? `${it.rating} of 5. ${touch() ? "Tap" : "Click"} it again to clear.` : touch() ? "Not rated." : `Not rated. Press ${keyOf("rate")} then 1–5.`}</span></div>
   <div class="states" role="group" aria-label="Sort into">${[["", {label:"New", c:"var(--new)"}], ...Object.entries(MARKS)].map(([k, m]) => `<button data-set="${k}" style="--c:${m.c}" aria-pressed="${(it.mark ?? "") === k}"><kbd>${keyOf(k || "unmark")}</kbd>${m.label}</button>`).join("")}</div>
   <div class="acts"><button class="primary" data-act="download" ${S.downloading.has(it.id) ? "disabled" : ""}>${S.downloading.has(it.id) ? "Downloading…" : "Download .torrent"}</button>${siteUrl(it) ? `<a href="${siteUrl(it)}" target="_blank" rel="noreferrer">Open on the tracker</a>` : ""}</div>
   <p class="note">Download fetches a fresh link from tracker and marks the torrent Downloaded.</p>`;
   if (hadFocus) $("#drawerIn h4").focus();
+}
+function othersHTML(it) {
+  if (!it.others?.length) return "";
+  return `<section class="others"><h5>Other uploads of ${esc(it.release)}</h5><ul>${it.others.map(o => `<li><button class="linkbtn" data-other="${o.id}">${esc(clean(o.title))}</button><span style="color:${o.mark ? MARKS[o.mark].c : "var(--new)"}">${o.mark ? MARKS[o.mark].label : "New"}</span></li>`).join("")}</ul>
+  <button class="linkbtn" data-act="allreleases">Show every upload of ${esc(it.release)}</button></section>`;
+}
+// Every mark change, from the server's log; loaded once per torrent until marks change.
+const historyCache = new Map();
+function historyHTML(it) {
+  const h = historyCache.get(it.id);
+  if (!h) { loadHistory(it.id); return ""; }
+  if (h.loading || h.error || !h.changes.length) return "";
+  const name = m => m ? MARKS[m].label : "New";
+  return `<section class="history"><h5>Sorting history</h5><ol>${h.changes.slice(0, 8).map(c => `<li><span>${name(c.mark)}</span><time>${fmtWhen(c.at)}</time></li>`).join("")}</ol>${h.changes.length > 8 ? `<p class="note">and ${h.changes.length - 8} earlier</p>` : ""}</section>`;
+}
+async function loadHistory(id) {
+  historyCache.set(id, {loading: true});
+  try { historyCache.set(id, await api("GET", `/api/torrents/${id}/history`)); }
+  catch (e) { historyCache.set(id, {error: e.message}); }
+  if (S.drawer === id) renderDrawer();
+}
+// Marks changed: other uploads' labels and histories are out of date.
+function marksChanged(ids, mark) {
+  historyCache.clear();
+  for (const it of S.items) for (const o of it.others ?? []) if (ids.includes(o.id)) o.mark = mark;
+}
+// Everything, searched for the release code, from the day of its oldest upload if that is outside the range.
+function showRelease(it) {
+  if (!it?.release) return;
+  const oldest = Math.min(it.uploaded_at, ...it.others.map(o => o.uploaded_at));
+  if (oldest < cutoff()) {
+    S.range = $("#range").value = "custom"; S.from = $("#from").value = dayKey(oldest); $("#customWrap").hidden = false;
+  }
+  S.q = $("#q").value = it.release;
+  showView("all");
 }
 function openDrawer(id, {delay = 0, focus = false} = {}) {
   S.drawer = id; $("#drawer").classList.add("open");
@@ -526,6 +571,7 @@ async function setMark(ids, mark, {advance = false} = {}) {
   count(mark, ids.length);
   const nodes = leaving ? ids.map(id => main.querySelector(`[data-id="${id}"]`)).filter(Boolean) : [];
   const apply = () => {
+    marksChanged(ids, mark);
     if (leaving) S.items = S.items.filter(i => !ids.includes(i.id));
     else S.items.forEach(i => { if (ids.includes(i.id)) i.mark = mark; });
     render(); scrollFocus(); refreshSummary().then(() => document.querySelector(`.bin[data-mark="${mark}"]`)?.classList.add("bump"));
@@ -550,7 +596,7 @@ async function undoOne() {
   for (const p of prev) { const k = p[key] ?? ""; if (!byValue.has(k)) byValue.set(k, []); byValue.get(k).push(p.id); }
   try { for (const [v, ids] of byValue) await api("POST", kind === "mark" ? "/api/marks" : "/api/ratings", {ids, [key]: v === "" ? null : v}); }
   catch (e) { toast(`Undo failed: ${e.message}`, false); }
-  S.focus = prev[0].id;
+  S.focus = prev[0].id; historyCache.clear();
   await load(); scrollFocus();
   const left = S.undos.length;
   toast(left ? `Change undone. ${plural(left, "more change")} to undo` : "Change undone. Nothing left to undo", left > 0);
@@ -939,6 +985,13 @@ $("#drawerIn").addEventListener("click", e => {
   if (e.target.closest("[data-act=retry]")) { detailsCache.delete(S.drawer); return openDrawer(S.drawer); }
   if (e.target.closest("[data-act=download]")) return download(S.drawer);
   if (e.target.closest("[data-act=refresh]")) return refreshCounts(S.drawer);
+  const other = e.target.closest("[data-other]");
+  if (other) {
+    const id = +other.dataset.other;
+    if (S.items.some(i => i.id === id)) { S.focus = id; render(); scrollFocus(); return openDrawer(id, {focus: true}); }
+    return showRelease(S.items.find(i => i.id === S.drawer));
+  }
+  if (e.target.closest("[data-act=allreleases]")) return showRelease(S.items.find(i => i.id === S.drawer));
 });
 function showView(v) { S.view = v; S.focus = null; S.picked = false; S.sel.clear(); main.scrollTop = 0; setRail(false); load(); }
 // Below 760px the rail is a sheet and the toolbar controls fold into View.

@@ -37,6 +37,9 @@ Screenshots come from the description and from links in the ScreenShot row and t
 Seeding, leeching and snatched counts come from the last sync that saw the torrent on a list page, so older torrents' counts go stale.
 The first time a torrent's details load, its counts are updated from that page at no extra cost. **Refresh** next to Counts updated reads the page again: one tracker request, at most once a minute per torrent.
 
+The same release is often uploaded twice under different titles. bbt reads the release code (like `MIDA-859`) from each title: a tag such as **Other upload viewed** marks the second one, and details list the other uploads with a link to see them all together.
+Details also show the torrent's sorting history: every mark change, newest first.
+
 ## Sync limits
 
 Sync never crawls the archive. Each run:
