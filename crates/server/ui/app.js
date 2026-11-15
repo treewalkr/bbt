@@ -215,9 +215,10 @@ function render() {
     if (catsOn() && !S.cats.size) msg = `<h3>No categories selected</h3><p>Tick at least one category on the left to see torrents.</p><button data-act="allcats">Select all categories</button>`;
     else if (S.q || S.free) msg = `<h3>No matches</h3><p>Nothing in ${label}${S.q ? ` matches “${esc(S.q)}”` : ""}${S.free ? `${S.q ? " and is" : " is"} free` : ""}${dated() ? ` ${rangeText()}` : ""}.</p><button data-act="clearfilters">Clear ${S.q && S.free ? "search and Free only" : S.q ? "search" : "Free only"}</button>`;
     else if (!total) msg = `<h3>No torrents yet</h3><p>Sync to fetch the latest uploads from tracker.</p><button data-act="sync">Sync now</button>`;
-    else if (S.view === "new") msg = `<h3>All caught up</h3>${tallyHTML()}<p>Nothing new ${rangeText()}. Sync to check the tracker for new uploads.</p><button data-act="sync">Sync now</button>`;
+    else if (S.view === "new") msg = `<h3>All caught up</h3>${tallyHTML()}${ACTIVITY}<p>Nothing new ${rangeText()}. Sync to check the tracker for new uploads.</p><button data-act="sync">Sync now</button>`;
     else msg = `<h3>Nothing in ${label}</h3><p>${MARKS[S.view] ? `Press ${keyOf(S.view)} on a torrent to add it here.` : "Try a wider date range."}</p>`;
     main.innerHTML = `<div class="empty">${msg}</div>`;
+    fillActivity();
   } else {
     const total = S.summary?.counts.total ?? 0;
     const head = S.grid ? "" : `<div class="colhead"><span></span><span></span><span></span><span class="l">${S.view === "all" && total > flat.length && flat.length < 5000 ? `Title · ${flat.length} uploaded ${rangeText()}, of ${total} in bbt` : flat.length >= 5000 ? "Title · first 5000 shown" : "Title"}</span><span>Size</span><span class="c-stat">${stat()[0]}</span><span class="c-time">${byDay ? "Time" : "Age"}</span></div>`;
@@ -315,6 +316,8 @@ function othersHTML(it) {
 }
 // Every mark change, from the server's log; loaded once per torrent until marks change.
 const historyCache = new Map();
+const ACTIVITY = `<div class="activity" data-activity></div>`;
+let activity = null; // {today, days: Map(day -> n)}, cleared when marks change
 function historyHTML(it) {
   const h = historyCache.get(it.id);
   if (!h) { loadHistory(it.id); return ""; }
@@ -330,7 +333,7 @@ async function loadHistory(id) {
 }
 // Marks changed: other uploads' labels and histories are out of date.
 function marksChanged(ids, mark) {
-  historyCache.clear();
+  historyCache.clear(); activity = null;
   for (const it of S.items) for (const o of it.others ?? []) if (ids.includes(o.id)) o.mark = mark;
 }
 // Everything, searched for the release code, from the day of its oldest upload if that is outside the range.
@@ -545,6 +548,44 @@ function tallyHTML() {
   return `<p class="tally">You sorted <b>${plural(sum, "torrent")}</b> this session: ${done.map(k => `<span style="color:${MARKS[k].c}">${tally[k]} ${words[k]}</span>`).join(", ")}.</p>${jump}`;
 }
 
+/* ===== sorting calendar: torrents sorted per day over the last 12 weeks ===== */
+async function fillActivity() {
+  const els = document.querySelectorAll("[data-activity]");
+  if (!els.length) return;
+  if (!activity) {
+    try {
+      const r = await api("GET", `/api/activity?days=84&offset=${-new Date().getTimezoneOffset() * 60}`);
+      activity = {today: r.today, days: new Map(r.days.map(d => [d.day, d.n]))};
+    } catch { return; }
+  }
+  const html = activityHTML(activity);
+  for (const el of document.querySelectorAll("[data-activity]")) el.innerHTML = html;
+}
+function activityHTML({today, days}) {
+  const n = d => days.get(d) ?? 0;
+  const date = d => new Date(d * 864e5); // read with getUTC*: day numbers already include the zone
+  // Columns are weeks, Monday on top; the last column is this week.
+  const monday = today - (date(today).getUTCDay() + 6) % 7;
+  const first = monday - 11 * 7;
+  const max = Math.max(1, ...days.values());
+  // Square root, so one big day doesn't wash out the ordinary ones.
+  const level = v => v ? Math.min(4, Math.ceil(Math.sqrt(v / max) * 4)) : 0;
+  const fmt = d => date(d).toLocaleDateString(undefined, {weekday: "short", day: "numeric", month: "short", timeZone: "UTC"});
+  let cells = "";
+  for (let d = first; d < monday + 7; d++) {
+    const v = n(d);
+    cells += d > today ? `<i class="future"></i>` : `<i class="l${level(v)}${d === today ? " today" : ""}" title="${fmt(d)}: ${v ? `${v} sorted` : "nothing sorted"}"></i>`;
+  }
+  // A streak survives a day you haven't sorted yet: it counts back from yesterday then.
+  let streak = 0;
+  for (let d = n(today) ? today : today - 1; n(d); d--) streak++;
+  let total = 0;
+  for (const v of days.values()) total += v;
+  const line = streak > 1 ? `<b>${streak}-day streak</b>${n(today) ? "" : ". Sort one today to keep it"}`
+    : n(today) ? `<b>${plural(n(today), "torrent")}</b> sorted today` : `Nothing sorted today yet`;
+  return `<div class="cal" role="img" aria-label="${plural(total, "torrent")} sorted in the last 12 weeks">${cells}</div><p>${line} · ${plural(total, "torrent")} in 12 weeks</p>`;
+}
+
 /* ===== marking ===== */
 let toastT;
 function hideToast() { clearTimeout(toastT); $("#toast").classList.remove("show"); }
@@ -738,7 +779,8 @@ function renderSwipe() {
   for (const b of $("#swActs").querySelectorAll("button")) b.disabled = !it;
   if (!it) {
     SW.cur = null; clearTimeout(SW.fetchT);
-    $("#swDeck").innerHTML = `<div class="empty sw-done"><h3>All caught up</h3>${tallyHTML()}<p>You've sorted every new torrent ${rangeText()}.</p><button data-sw="close">Back to the list</button></div>`;
+    $("#swDeck").innerHTML = `<div class="empty sw-done"><h3>All caught up</h3>${tallyHTML()}${ACTIVITY}<p>You've sorted every new torrent ${rangeText()}.</p><button data-sw="close">Back to the list</button></div>`;
+    fillActivity();
     return;
   }
   if (it.id !== SW.cur) {

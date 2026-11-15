@@ -39,6 +39,7 @@ The first time a torrent's details load, its counts are updated from that page a
 
 The same release is often uploaded twice under different titles. bbt reads the release code (like `MIDA-859`) from each title: a tag such as **Other upload viewed** marks the second one, and details list the other uploads with a link to see them all together.
 Details also show the torrent's sorting history: every mark change, newest first.
+When New is empty, **All caught up** shows a calendar of the last 12 weeks: each square is a day, darker the more torrents you sorted, with your current day streak.
 
 ## Sync limits
 
