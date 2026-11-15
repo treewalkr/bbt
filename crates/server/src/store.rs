@@ -1,7 +1,7 @@
 //! SQLite storage: torrents, the user's marks, sync history and small settings.
 
 use anyhow::Result;
-use bbt_domain::ListedTorrent;
+use bbt_domain::{Counts, ListedTorrent};
 use rusqlite::{Connection, OptionalExtension, params};
 use std::path::Path;
 
@@ -191,6 +191,25 @@ impl Store {
                 [id],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
+            .optional()?)
+    }
+
+    /// Live counts read from the torrent's details page.
+    pub fn save_counts(&self, id: u64, c: &Counts, now: i64) -> Result<()> {
+        self.conn.execute(
+            "UPDATE torrents SET seeders=?2, leechers=?3, snatched=?4, stats_at=?5 WHERE id=?1",
+            params![id, c.seeders, c.leechers, c.snatched, now],
+        )?;
+        Ok(())
+    }
+
+    /// When the torrent's counts were last read, if it is known.
+    pub fn stats_at(&self, id: u64) -> Result<Option<i64>> {
+        Ok(self
+            .conn
+            .query_row("SELECT stats_at FROM torrents WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
             .optional()?)
     }
 

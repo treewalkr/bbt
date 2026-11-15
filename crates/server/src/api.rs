@@ -56,6 +56,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/older", post(load_older))
         .route("/api/torrents/{id}/details", get(details))
         .route("/api/torrents/{id}/download", get(download))
+        .route("/api/torrents/{id}/refresh", post(refresh))
         .with_state(state)
 }
 
@@ -482,20 +483,60 @@ async fn fetch_details(s: &AppState, id: u64) -> Result<Details, ApiError> {
             details.images.push(image);
         }
     }
-    s.store
-        .lock()
-        .await
-        .save_images(id, &details.images, chrono::Utc::now().timestamp())?;
+    let now = chrono::Utc::now().timestamp();
+    let store = s.store.lock().await;
+    store.save_images(id, &details.images, now)?;
+    if let Some(c) = &details.counts {
+        store.save_counts(id, c, now)?; // the page is fresher than the last list sync
+    }
     Ok(details)
 }
 
+/// Counts just read from a details page, in the shape the list uses.
+fn counts_json(d: &Details) -> Value {
+    d.counts.map_or(Value::Null, |c| {
+        json!({
+            "seeders": c.seeders,
+            "leechers": c.leechers,
+            "snatched": c.snatched,
+            "stats_at": chrono::Utc::now().timestamp(),
+        })
+    })
+}
+
 /// Images from the details page, fetched once and then served from the cache.
+/// A fresh fetch also brings the torrent's live counts.
 async fn details(State(s): State<Arc<AppState>>, Path(id): Path<u64>) -> ApiResult<Value> {
     if let Some(images) = s.store.lock().await.cached_images(id)? {
         return Ok(Json(json!({ "images": images, "cached": true })));
     }
     let d = fetch_details(&s, id).await?;
-    Ok(Json(json!({ "images": d.images, "cached": false })))
+    Ok(Json(
+        json!({ "images": d.images, "cached": false, "counts": counts_json(&d) }),
+    ))
+}
+
+/// Counts read under this many seconds ago are not read again.
+const REFRESH_COOLDOWN_SECS: i64 = 60;
+
+/// Read the details page again for live counts (one tracker request, on request only).
+async fn refresh(State(s): State<Arc<AppState>>, Path(id): Path<u64>) -> ApiResult<Value> {
+    let stats_at = s.store.lock().await.stats_at(id)?.ok_or_else(|| {
+        ApiError(
+            StatusCode::NOT_FOUND,
+            format!("torrent {id} is not in the database"),
+        )
+    })?;
+    if chrono::Utc::now().timestamp() - stats_at < REFRESH_COOLDOWN_SECS {
+        return Err(ApiError(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Counts were updated under a minute ago.".into(),
+        ));
+    }
+    let d = fetch_details(&s, id).await?;
+    Ok(Json(
+        json!({ "images": d.images, "counts": counts_json(&d) }),
+    ))
 }
 
 /// Fetch a fresh signed link from the details page, then pass the .torrent through.
@@ -663,6 +704,34 @@ mod tests {
         .await;
         let (_, v) = call(&app, "GET", "/api/torrents?from=150", None).await;
         assert_eq!(ids(&v), [2]);
+    }
+
+    #[tokio::test]
+    async fn refresh_needs_a_known_torrent_and_waits_a_minute() {
+        let (app, dir) = app().await;
+        let (st, _) = call(&app, "POST", "/api/torrents/9/refresh", None).await;
+        assert_eq!(st, StatusCode::NOT_FOUND);
+        // Counts from long ago: it would read the tracker, which tests have turned off.
+        let (st, _) = call(&app, "POST", "/api/torrents/1/refresh", None).await;
+        assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
+        let store = Store::open(dir.path().join("t.db")).unwrap();
+        let c = bbt_domain::Counts {
+            seeders: 4,
+            leechers: 2,
+            snatched: 7,
+        };
+        store
+            .save_counts(1, &c, chrono::Utc::now().timestamp())
+            .unwrap();
+        let (st, v) = call(&app, "POST", "/api/torrents/1/refresh", None).await;
+        assert_eq!(st, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(v["error"], "Counts were updated under a minute ago.");
+        let (_, v) = call(&app, "GET", "/api/torrents?view=all", None).await;
+        let t = &v["torrents"].as_array().unwrap()[1];
+        assert_eq!(
+            (t["seeders"].clone(), t["snatched"].clone()),
+            (json!(4), json!(7))
+        );
     }
 
     #[tokio::test]
