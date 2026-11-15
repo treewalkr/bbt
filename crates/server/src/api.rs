@@ -57,6 +57,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/torrents/{id}/details", get(details))
         .route("/api/torrents/{id}/download", get(download))
         .route("/api/torrents/{id}/refresh", post(refresh))
+        .route("/api/torrents/{id}/history", get(history))
         .with_state(state)
 }
 
@@ -234,6 +235,19 @@ async fn set_marks(
         .map(|(id, mark)| Previous { id, mark })
         .collect();
     Ok(Json(json!({ "previous": previous })))
+}
+
+/// Every mark change of one torrent, newest first (`mark: null` is back to New).
+async fn history(State(s): State<Arc<AppState>>, Path(id): Path<u64>) -> ApiResult<Value> {
+    let changes: Vec<Value> = s
+        .store
+        .lock()
+        .await
+        .mark_history(id)?
+        .into_iter()
+        .map(|(mark, at)| json!({ "mark": mark, "at": at }))
+        .collect();
+    Ok(Json(json!({ "changes": changes })))
 }
 
 /// UI preferences kept in the database so they survive browser storage being cleared.
@@ -732,6 +746,29 @@ mod tests {
             (t["seeders"].clone(), t["snatched"].clone()),
             (json!(4), json!(7))
         );
+    }
+
+    #[tokio::test]
+    async fn keeps_mark_history() {
+        let (app, _dir) = app().await;
+        for mark in [json!("viewed"), json!(null), json!("viewed")] {
+            call(
+                &app,
+                "POST",
+                "/api/marks",
+                Some(json!({"ids": [1], "mark": mark})),
+            )
+            .await;
+        }
+        let (st, v) = call(&app, "GET", "/api/torrents/1/history", None).await;
+        assert_eq!(st, StatusCode::OK);
+        let marks: Vec<&Value> = v["changes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| &c["mark"])
+            .collect();
+        assert_eq!(marks, [&json!("viewed"), &json!(null), &json!("viewed")]);
     }
 
     #[tokio::test]

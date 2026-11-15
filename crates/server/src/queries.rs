@@ -219,20 +219,41 @@ impl Store {
                      updated_at = excluded.updated_at",
             )?;
             let mut del = tx.prepare_cached("DELETE FROM marks WHERE torrent_id = ?1")?;
+            let mut log = tx.prepare_cached(
+                "INSERT INTO mark_log (torrent_id, state, at) VALUES (?1, ?2, ?3)",
+            )?;
             for &id in ids {
                 if !exists.exists([id])? {
                     continue;
                 }
                 let old: Option<String> = get.query_row([id], |r| r.get(0)).ok();
-                previous.push((id, old.as_deref().and_then(Mark::parse)));
+                let old = old.as_deref().and_then(Mark::parse);
+                previous.push((id, old));
                 match mark {
                     Some(m) => put.execute(rusqlite::params![id, m.as_str(), now])?,
                     None => del.execute([id])?,
                 };
+                if old != mark {
+                    log.execute(rusqlite::params![id, mark.map(Mark::as_str), now])?;
+                }
             }
         }
         tx.commit()?;
         Ok(previous)
+    }
+
+    /// Every mark change of one torrent, newest first. `None` means back to New.
+    pub fn mark_history(&self, id: u64) -> Result<Vec<(Option<Mark>, i64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT state, at FROM mark_log WHERE torrent_id = ?1 ORDER BY at DESC, id DESC",
+        )?;
+        let rows = stmt
+            .query_map([id], |r| {
+                let state: Option<String> = r.get(0)?;
+                Ok((state.as_deref().and_then(Mark::parse), r.get(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
     }
 
     /// Set (or clear, with `None`) the star rating on each id. `stars` must be 1–5.
@@ -491,6 +512,16 @@ mod tests {
         assert_eq!(rows[0].mark, Some(Mark::DownloadLater));
 
         s.set_marks(&[2], None, 6200).unwrap();
+        s.set_marks(&[2], None, 6300).unwrap(); // no change, not logged
+        assert_eq!(
+            s.mark_history(2).unwrap(),
+            [
+                (None, 6200),
+                (Some(Mark::DownloadLater), 6100),
+                (Some(Mark::Viewed), 6000)
+            ]
+        );
+        assert!(s.mark_history(999).unwrap().is_empty());
         assert_eq!(ids(&s.list_torrents(&Filter::default()).unwrap()), [3, 2]);
     }
 

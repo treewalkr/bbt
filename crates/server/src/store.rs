@@ -78,6 +78,19 @@ const SCHEMA_V4: &str = "DELETE FROM details;";
 /// Same again for details saved before description links were followed.
 const SCHEMA_V5: &str = "DELETE FROM details;";
 
+/// Every mark change, so "did I already sort this?" can be answered later.
+/// `state` is NULL when the torrent went back to New. Starts with today's marks.
+const SCHEMA_V6: &str = "
+CREATE TABLE mark_log (
+    id         INTEGER PRIMARY KEY,
+    torrent_id INTEGER NOT NULL REFERENCES torrents(id),
+    state      TEXT,
+    at         INTEGER NOT NULL
+);
+CREATE INDEX mark_log_torrent ON mark_log (torrent_id, at);
+INSERT INTO mark_log (torrent_id, state, at) SELECT torrent_id, state, updated_at FROM marks;
+";
+
 pub struct Store {
     pub(crate) conn: Connection,
 }
@@ -124,6 +137,10 @@ impl Store {
         if version < 5 {
             conn.execute_batch(SCHEMA_V5)?;
             conn.pragma_update(None, "user_version", 5)?;
+        }
+        if version < 6 {
+            conn.execute_batch(SCHEMA_V6)?;
+            conn.pragma_update(None, "user_version", 6)?;
         }
         Ok(Self { conn })
     }
