@@ -75,6 +75,9 @@ CREATE TABLE ratings (
 /// screenshots; forget them so each is fetched again the next time it is opened.
 const SCHEMA_V4: &str = "DELETE FROM details;";
 
+/// Same again for details saved before description links were followed.
+const SCHEMA_V5: &str = "DELETE FROM details;";
+
 pub struct Store {
     pub(crate) conn: Connection,
 }
@@ -117,6 +120,10 @@ impl Store {
         if version < 4 {
             conn.execute_batch(SCHEMA_V4)?;
             conn.pragma_update(None, "user_version", 4)?;
+        }
+        if version < 5 {
+            conn.execute_batch(SCHEMA_V5)?;
+            conn.pragma_update(None, "user_version", 5)?;
         }
         Ok(Self { conn })
     }

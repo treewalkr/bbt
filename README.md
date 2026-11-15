@@ -32,7 +32,7 @@ To change a key, press `?` and click it; Reset to defaults puts them all back.
 `s` (or **Swipe** in the toolbar) shows new torrents one card at a time: `←` or swipe left passes (Viewed),
 `↑` saves for later (View later), `→` keeps (Download later). `Space` flips screenshots, `Enter` shows one full size.
 Screenshots for the card you are on and the next 2 load through the usual 3-second tracker pacing, one card at a time; change how many cards load ahead (0–5) in Settings.
-Screenshots come from the description and from the links in the ScreenShot row: for a link to an image host's page, bbt reads the picture the page names for link previews (`og:image`) and skips the page's banners and ads. Only public hosts are read, never the tracker or your own network.
+Screenshots come from the description and from links in the ScreenShot row and the description's text links: for a link to an image host's page, bbt reads the picture the page names for link previews (`og:image`) and skips the page's banners and ads. Only public hosts are read, never the tracker or your own network.
 
 Seeding, leeching and snatched counts come from the last sync that saw the torrent on a list page, so older torrents' counts go stale.
 The first time a torrent's details load, its counts are updated from that page at no extra cost. **Refresh** next to Counts updated reads the page again: one tracker request, at most once a minute per torrent.
