@@ -64,8 +64,9 @@ pub struct Details {
     pub download_path: Option<String>,
     /// Absolute image URLs from the description (cover and screenshots), deduplicated.
     pub images: Vec<String>,
-    /// Links in the ScreenShot row. They usually lead to an image host's page,
-    /// not the image itself; [`page_image`] finds the picture on such a page.
+    /// Links that may lead to a screenshot: the ScreenShot row's, then the
+    /// description's text links. They usually open an image host's page, not the
+    /// image itself; [`page_image`] finds the picture on such a page.
     pub screenshot_links: Vec<String>,
     /// Live peer counts, when the page shows them.
     pub counts: Option<Counts>,
@@ -97,14 +98,19 @@ pub fn parse_details_page(html: &str) -> Details {
         }
     }
     let mut screenshot_links: Vec<String> = Vec::new();
-    for cell in row_cells(&doc, "screenshot") {
-        for a in cell.select(&sel("a[href]")) {
-            if let Some(href) = a.value().attr("href").map(str::trim)
-                && is_web_url(href)
-                && !screenshot_links.iter().any(|l| l == href)
-            {
-                screenshot_links.push(href.to_string());
-            }
+    let row_links =
+        row_cells(&doc, "screenshot").flat_map(|c| c.select(&SEL_LINK).collect::<Vec<_>>());
+    // A description link around an <img> is a thumbnail already in `images`.
+    let descr_link = sel("[class*='-descr'] a[href]");
+    let descr_links = doc
+        .select(&descr_link)
+        .filter(|a| a.select(&sel("img")).next().is_none());
+    for a in row_links.chain(descr_links) {
+        if let Some(href) = a.value().attr("href").map(str::trim)
+            && is_web_url(href)
+            && !screenshot_links.iter().any(|l| l == href)
+        {
+            screenshot_links.push(href.to_string());
         }
     }
     Details {
@@ -127,6 +133,7 @@ fn row_cells<'a>(doc: &'a Html, label: &'a str) -> impl Iterator<Item = ElementR
         .filter_map(|h| h.next_siblings().find_map(ElementRef::wrap))
 }
 
+static SEL_LINK: std::sync::LazyLock<Selector> = std::sync::LazyLock::new(|| sel("a[href]"));
 static SEL_ROWHEAD: std::sync::LazyLock<Selector> = std::sync::LazyLock::new(|| sel("td.rowhead"));
 
 /// "17 Seeder(s), 8 Leecher(s) = 25 Peer(s) total" and "Snatched 21 View Snatched".

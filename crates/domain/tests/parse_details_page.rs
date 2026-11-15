@@ -52,6 +52,21 @@ fn screenshot_row_keeps_every_link_once() {
 }
 
 #[test]
+fn description_text_links_count_but_thumbnail_links_do_not() {
+    let d = parse_details_page(
+        "<table><tr><td class=rowhead>ScreenShot</td><td><a href='https://host.test/a'>a</a></td></tr>\
+         <tr><td>Description</td><td><div class=\"bb-descr\"><a href=\"https://host.test/b\">https://host.test/b</a>\
+         <a href='https://host.test/c'><img src='https://i.test/c.th.jpg'></a>\
+         <a href='https://host.test/a'>again</a></div></td></tr></table>",
+    );
+    assert_eq!(
+        d.screenshot_links,
+        ["https://host.test/a", "https://host.test/b"]
+    );
+    assert_eq!(d.images, ["https://i.test/c.th.jpg"]);
+}
+
+#[test]
 fn page_image_reads_the_preview_tags_not_banners() {
     let page = "<html><head><meta property='og:image' content=' https://i.test/full.png '>\
         </head><body><img src='https://ads.test/casino.gif'><img src='https://i.test/full.md.png'></body></html>";
