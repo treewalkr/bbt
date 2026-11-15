@@ -309,6 +309,20 @@ impl Store {
         Ok(rows)
     }
 
+    /// How many torrents were sorted on each day since `since`, oldest day first.
+    /// Days are counted in a zone `offset` seconds east of UTC; a day is its number
+    /// since 1970-01-01 there. Sending a torrent back to New doesn't count.
+    pub fn sorted_per_day(&self, since: i64, offset: i64) -> Result<Vec<(i64, u32)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT (at + ?2) / 86400 AS day, COUNT(DISTINCT torrent_id) FROM mark_log
+             WHERE at >= ?1 AND state IS NOT NULL GROUP BY day ORDER BY day",
+        )?;
+        let rows = stmt
+            .query_map([since, offset], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
     /// Set (or clear, with `None`) the star rating on each id. `stars` must be 1–5.
     /// Returns the previous ratings for ids that exist, so the caller can undo.
     pub fn set_ratings(
@@ -578,6 +592,24 @@ mod tests {
         );
         assert!(s.mark_history(999).unwrap().is_empty());
         assert_eq!(ids(&s.list_torrents(&Filter::default()).unwrap()), [3, 2]);
+    }
+
+    #[test]
+    fn counts_sorted_torrents_per_day() {
+        let mut s = store();
+        let day = 86_400;
+        s.set_marks(&[1, 2], Some(Mark::Viewed), 20 * day + 100)
+            .unwrap();
+        // Re-sorting the same torrent that day counts it once; back to New not at all.
+        s.set_marks(&[1], Some(Mark::ViewLater), 20 * day + 200)
+            .unwrap();
+        s.set_marks(&[3], None, 20 * day + 300).unwrap();
+        s.set_marks(&[3], Some(Mark::Viewed), 22 * day - 60)
+            .unwrap();
+        assert_eq!(s.sorted_per_day(0, 0).unwrap(), [(20, 2), (21, 1)]);
+        // Two hours east, the last mark falls on day 22.
+        assert_eq!(s.sorted_per_day(0, 7200).unwrap(), [(20, 2), (22, 1)]);
+        assert_eq!(s.sorted_per_day(21 * day, 0).unwrap(), [(21, 1)]);
     }
 
     #[test]

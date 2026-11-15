@@ -58,6 +58,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/torrents/{id}/download", get(download))
         .route("/api/torrents/{id}/refresh", post(refresh))
         .route("/api/torrents/{id}/history", get(history))
+        .route("/api/activity", get(activity))
         .with_state(state)
 }
 
@@ -248,6 +249,44 @@ async fn history(State(s): State<Arc<AppState>>, Path(id): Path<u64>) -> ApiResu
         .map(|(mark, at)| json!({ "mark": mark, "at": at }))
         .collect();
     Ok(Json(json!({ "changes": changes })))
+}
+
+#[derive(Deserialize)]
+struct ActivityQuery {
+    /// The browser's time zone, in seconds east of UTC.
+    #[serde(default)]
+    offset: i64,
+    #[serde(default = "default_activity_days")]
+    days: i64,
+}
+
+fn default_activity_days() -> i64 {
+    84
+}
+
+/// Torrents sorted per day over the last `days` days, counted in the browser's zone.
+/// `today` is the current day number, so the UI can lay out empty days too.
+async fn activity(
+    State(s): State<Arc<AppState>>,
+    Query(q): Query<ActivityQuery>,
+) -> ApiResult<Value> {
+    if !(-14 * 3600..=14 * 3600).contains(&q.offset) {
+        return Err(ApiError::bad_request(
+            "offset must be within 14 hours of UTC",
+        ));
+    }
+    let days = q.days.clamp(1, 371);
+    let today = (chrono::Utc::now().timestamp() + q.offset).div_euclid(86_400);
+    let since = (today - days + 1) * 86_400 - q.offset;
+    let counts: Vec<Value> = s
+        .store
+        .lock()
+        .await
+        .sorted_per_day(since, q.offset)?
+        .into_iter()
+        .map(|(day, n)| json!({ "day": day, "n": n }))
+        .collect();
+    Ok(Json(json!({ "today": today, "days": counts })))
 }
 
 /// UI preferences kept in the database so they survive browser storage being cleared.
@@ -769,6 +808,23 @@ mod tests {
             .map(|c| &c["mark"])
             .collect();
         assert_eq!(marks, [&json!("viewed"), &json!(null), &json!("viewed")]);
+    }
+
+    #[tokio::test]
+    async fn counts_todays_sorting() {
+        let (app, _dir) = app().await;
+        call(
+            &app,
+            "POST",
+            "/api/marks",
+            Some(json!({"ids": [1, 2], "mark": "viewed"})),
+        )
+        .await;
+        let (st, v) = call(&app, "GET", "/api/activity?offset=25200", None).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["days"], json!([{"day": v["today"], "n": 2}]));
+        let (st, _) = call(&app, "GET", "/api/activity?offset=90000", None).await;
+        assert_eq!(st, StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
