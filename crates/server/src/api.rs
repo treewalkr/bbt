@@ -1,6 +1,7 @@
 //! JSON API for the local inbox UI. Binds to localhost only (see `serve`).
 
 use crate::config::{self, Config};
+use crate::hosts;
 use crate::older::{self, Cursor};
 use crate::queries::{Filter, Mark, Sort, View};
 use crate::store::Store;
@@ -460,18 +461,31 @@ async fn fetch_details(s: &AppState, id: u64) -> Result<Details, ApiError> {
             })?
             .0
     };
-    let mut client = s.client.lock().await;
-    if client.is_none() {
-        *client = Some(config::client(&*s.store.lock().await, cfg)?);
+    let result = {
+        let mut guard = s.client.lock().await;
+        if guard.is_none() {
+            *guard = Some(config::client(&*s.store.lock().await, cfg)?);
+        }
+        let client = guard.as_mut().expect("client was just set");
+        let result = client
+            .fetch_html(&cfg.site.details_page(id, hash_id), &cfg.creds)
+            .await;
+        s.store
+            .lock()
+            .await
+            .set("cookies", &client.cookie_header())?;
+        result
+    }; // the tracker is free again: the image hosts below are not the tracker
+    let mut details = parse_details_page(&result?);
+    for image in hosts::resolve(&details.screenshot_links, &cfg.base_url).await {
+        if !details.images.contains(&image) {
+            details.images.push(image);
+        }
     }
-    let client = client.as_mut().expect("client was just set");
-    let result = client
-        .fetch_html(&cfg.site.details_page(id, hash_id), &cfg.creds)
-        .await;
-    let store = s.store.lock().await;
-    store.set("cookies", &client.cookie_header())?;
-    let details = parse_details_page(&result?);
-    store.save_images(id, &details.images, chrono::Utc::now().timestamp())?;
+    s.store
+        .lock()
+        .await
+        .save_images(id, &details.images, chrono::Utc::now().timestamp())?;
     Ok(details)
 }
 

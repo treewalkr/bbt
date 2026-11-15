@@ -71,6 +71,10 @@ CREATE TABLE ratings (
 );
 ";
 
+/// Details saved before screenshot links were followed are missing those
+/// screenshots; forget them so each is fetched again the next time it is opened.
+const SCHEMA_V4: &str = "DELETE FROM details;";
+
 pub struct Store {
     pub(crate) conn: Connection,
 }
@@ -109,6 +113,10 @@ impl Store {
         if version < 3 {
             conn.execute_batch(SCHEMA_V3)?;
             conn.pragma_update(None, "user_version", 3)?;
+        }
+        if version < 4 {
+            conn.execute_batch(SCHEMA_V4)?;
+            conn.pragma_update(None, "user_version", 4)?;
         }
         Ok(Self { conn })
     }
