@@ -108,7 +108,7 @@ main.mixed .row[data-state=viewed] .title{color:var(--muted)}
 .tag.sticky{background:#4A2E3A;color:#F6C2D3}
 .tag.state{background:none;border:1px solid var(--state);color:var(--state)}
 .num{text-align:right;font-size:13px}
-.num small{display:block;font-size:11px;color:var(--faint)}
+.num small{display:block;font-size:11px;color:var(--muted)}
 .num.hot{color:var(--got)}
 .time{text-align:right;font-size:12px;color:var(--muted)}
 .colhead{position:sticky;top:0;z-index:3;display:grid;grid-template-columns:4px 24px 48px minmax(0,1fr) 78px 64px 56px;gap:0 12px;padding:6px 20px 6px 0;font-size:11px;color:var(--faint);background:var(--ink);border-bottom:1px solid var(--line)}
@@ -126,7 +126,7 @@ main.has-colhead .ghead{top:27px}
 .card .tags{margin-top:3px}
 .card .flag{position:absolute;top:12px;left:12px;width:10px;height:10px;border-radius:50%;background:var(--state);box-shadow:0 0 0 2px var(--ink)}
 main:not(.mixed) .card .flag{display:none}
-main.mixed .card[data-state=viewed]{opacity:.55}
+main.mixed .card[data-state=viewed]{opacity:.72}
 .card[data-state=new]{--state:var(--new)}.card[data-state=watch]{--state:var(--watch)}.card[data-state=get]{--state:var(--get)}.card[data-state=got]{--state:var(--got)}
 .card .selbox{position:absolute;top:6px;right:6px;width:32px;height:32px}
 
@@ -166,7 +166,7 @@ body:has(.drawer.open) .bin .count{font-size:18px}
 .bin kbd{font:600 13px "IBM Plex Sans Thai";width:24px;height:24px;display:grid;place-items:center;border-radius:5px;background:var(--c);color:var(--ink)}
 .bin .lbl{font-weight:600;font-size:14px}
 .bin .lbl small{display:block;font-weight:400;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bin:disabled{opacity:.4;cursor:default}
+.bin:disabled{opacity:.5;cursor:default}
 .bin:disabled:hover{background:color-mix(in srgb,var(--c) 10%,transparent)}
 .bin .count{font-family:"Bricolage Grotesque";font-size:22px;font-weight:700;color:var(--c)}
 .bin.bump .count{animation:bump .35s ease}
@@ -442,3 +442,37 @@ main.blind .row.focus .bar{background:transparent}
   .drawer .states button{min-height:48px;justify-content:center;font-size:12px}
   .drawer .acts button,.drawer .acts a{min-height:44px;display:grid;place-items:center}
 }
+
+/* ---------- touch: every control at least 44px, hit areas grown without moving the layout ---------- */
+.touch .top input,.touch .top select,.touch .mbtn,.touch .iconbtn,.touch .seg button,.touch .toggle{min-height:44px}
+.touch .toggle input,.touch .cats input,.touch .set input[type=checkbox]{width:20px;height:20px}
+.touch .set select{min-height:44px}
+.touch .ghead .act button{min-height:44px;white-space:nowrap}
+.touch .nav button,.touch .cats label,.touch .sync button{min-height:44px}
+.touch .cats-head button{min-height:44px;padding:0 10px}
+.touch .rate button{min-width:44px;min-height:44px}
+.touch .drawer .linkbtn{padding:12px 4px;margin:-12px -4px}
+.touch .card .selbox{width:44px;height:44px;top:2px;right:2px;display:grid;place-items:center}
+.touch .card .sel{width:20px;height:20px}
+.touch .sw-top .lb-btn,.touch .sw-zoom{width:44px;height:44px}
+.touch .toast button{min-height:44px;padding:0 6px;margin:-12px 0}
+.touch .empty button{min-height:44px}
+.touch .seg button,.touch .cats-head button,.touch #setBtn{min-width:44px}
+.touch .drawer .linkbtn{padding:13px 4px;margin:-13px -4px}
+.touch .sw-site{padding:14px 0;margin:-14px 0 -14px auto}
+.touch .sw-reveal{min-height:44px}
+.touch .set label{min-height:44px;display:flex;align-items:center}
+.touch dialog .foot button{min-height:44px;min-width:64px}
+/* The rail is a sheet on phones: give it a way out besides the scrim. */
+.railclose{display:none}
+@media (max-width:760px){
+  .rail .brand{align-items:center}
+  .railclose{display:grid;place-items:center;margin-left:auto;width:44px;height:44px;border:0;background:none;color:var(--muted);border-radius:var(--r-s)}
+  /* Column labels say little on a phone; day headers stay one solid line. */
+  .colhead{display:none}
+  main.has-colhead .ghead,.colhead + .group .ghead{top:0}
+  .ghead{background:var(--ink);flex-wrap:wrap;row-gap:6px}
+  .ghead h3{white-space:nowrap}
+}
+/* Landscape on a notched phone: keep content out of the side cut-outs. */
+body{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}

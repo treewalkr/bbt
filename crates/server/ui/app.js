@@ -393,7 +393,7 @@ function historyHTML(it) {
   if (!h) { loadHistory(it.id); return ""; }
   if (h.loading || h.error || !h.changes.length) return "";
   const name = m => m ? MARKS[m].label : "New";
-  return `<section class="history"><h5>Sorting history</h5><ol>${h.changes.slice(0, 8).map(c => `<li><span>${name(c.mark)}</span><time>${fmtWhen(c.at)}</time></li>`).join("")}</ol>${h.changes.length > 8 ? `<p class="note">and ${h.changes.length - 8} earlier</p>` : ""}</section>`;
+  return `<section class="history"><h5>Sorting history, newest first</h5><ol>${h.changes.slice(0, 8).map(c => `<li><span>${name(c.mark)}</span><time>${fmtWhen(c.at)}</time></li>`).join("")}</ol>${h.changes.length > 8 ? `<p class="note">and ${h.changes.length - 8} earlier</p>` : ""}</section>`;
 }
 async function loadHistory(id) {
   historyCache.set(id, {loading: true});
@@ -659,7 +659,15 @@ function activityHTML({today, days}) {
 /* ===== marking ===== */
 let toastT;
 function hideToast() { clearTimeout(toastT); $("#toast").classList.remove("show"); }
+// The toast sits just above whatever controls are at the bottom, so it never covers them.
+function placeToast() {
+  const sheet = $("#drawer").classList.contains("open") && matchMedia("(max-width:760px)").matches ? $("#drawer .states") : null;
+  const anchor = SW.open ? $("#swActs") : sheet ?? $(".bar-wrap");
+  const top = anchor?.getBoundingClientRect().top;
+  $("#toast").style.bottom = top > 0 ? `${Math.round(innerHeight - top + 10)}px` : "";
+}
 function toast(msg, undo = true) {
+  placeToast();
   $("#toastMsg").textContent = msg; $("#undoBtn").hidden = !undo;
   $("#toast").classList.add("show"); clearTimeout(toastT);
   toastT = setTimeout(() => $("#toast").classList.remove("show"), touch() ? 8000 : 4500);
@@ -844,7 +852,7 @@ function swHint() {
 function renderSwipe() {
   if (!SW.open || SW.drag || SW.leaving) return;
   const pile = swPile(), it = pile[0], total = SW.order.length;
-  $("#swCount").textContent = it ? `${pile.length} of ${total} left` : `All ${total} sorted`;
+  $("#swCount").textContent = it ? `${total - pile.length} sorted · ${pile.length} to go` : `All ${total} sorted`;
   $("#swProg").style.width = `${total ? (total - pile.length) / total * 100 : 0}%`;
   for (const b of $("#swActs").querySelectorAll("button")) b.disabled = !it;
   if (!it) {
@@ -882,6 +890,7 @@ function closeSwipe() {
   if (!SW.open) return;
   SW.open = false; clearTimeout(SW.fetchT); armRate(false);
   $("#swipe").hidden = true; $("#vSwipe").ariaPressed = "false"; $("#swDeck").innerHTML = "";
+  $(".top").classList.remove("more"); $("#moreBtn").ariaExpanded = "false";
   const next = swPile()[0]; if (next) S.focus = next.id;
   render(); scrollFocus(); main.focus({preventScroll: true});
 }
@@ -1087,7 +1096,8 @@ main.addEventListener("click", e => {
   const id = +r.dataset.id;
   if (e.target.classList.contains("sel")) { S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); renderTarget(); return; }
   // First click focuses; clicking the focused torrent again opens its details.
-  if (S.focus === id && S.drawer !== id) return openDrawer(id);
+  // On touch the first row is focused before anything is tapped, so its first tap only picks it.
+  if (S.focus === id && S.drawer !== id && !blind()) return openDrawer(id);
   main.querySelector(".focus")?.classList.remove("focus");
   S.focus = id; r.classList.add("focus"); pick(); renderTarget();
   if (S.drawer) openDrawer(id, {delay: FOLLOW_MS});
@@ -1118,6 +1128,7 @@ function setRail(on) {
   if (on) $("#views [aria-current=true]")?.focus();
 }
 $("#railBtn").onclick = () => setRail(true);
+$("#railClose").onclick = () => { setRail(false); $("#railBtn").focus(); };
 $("#scrim").onclick = () => setRail(false);
 $("#moreBtn").onclick = () => { const on = $(".top").classList.toggle("more"); $("#moreBtn").ariaExpanded = String(on); };
 $("#views").addEventListener("click", e => { const b = e.target.closest("[data-view]"); if (b) showView(b.dataset.view); });
