@@ -101,6 +101,27 @@
 <div class="toast" id="toast" role="status"><span id="toastMsg"></span><button id="undoBtn">Undo</button></div>
 
 <dialog id="help">
+  <div class="touch-only">
+    <h3>Using bbt by touch</h3>
+    <div class="gestures">
+      <section><h4>Sort the list</h4><ul>
+        <li>Tap a torrent to pick it. Tap it again for details and screenshots.</li>
+        <li>The four buttons at the bottom sort the picked torrent and move to the next one.</li>
+        <li><b>Mark N viewed</b> on a day sorts the whole day. Above 20 it asks you to tap Confirm.</li>
+        <li>Made a mistake? Tap <b>Undo</b> in the message at the bottom. Each tap goes one change further back.</li>
+      </ul></section>
+      <section><h4>Swipe mode</h4><ul>
+        <li>Open it from <b>View</b>, then <b>Swipe</b>.</li>
+        <li>Swipe the card left to pass (Viewed), up for later (View later), right to keep (Download later).</li>
+        <li>Tap the left or right side of the picture to flip screenshots. The corner button shows one full screen.</li>
+      </ul></section>
+      <section><h4>Screenshots and privacy</h4><ul>
+        <li>Pinch to zoom a screenshot, drag to move it.</li>
+        <li>Posters and screenshots start blurred. Tap <b>Show</b> to see one; <b>View</b> turns blur on or off.</li>
+      </ul></section>
+    </div>
+  </div>
+  <div class="kbd-only">
   <h3>Keyboard</h3>
   <p class="kbmsg" id="kbMsg" aria-live="polite">Click a key to change it.</p>
   <div class="keycols">
@@ -150,7 +171,8 @@
     </div></section>
   </div>
   <p class="kbnote">Enter, Esc, Space, the arrows and Option are fixed. Open this list with <button type="button" class="kb" data-k="help"></button></p>
-  <form method="dialog" class="foot"><button type="button" id="kbReset">Reset to defaults</button><button>Close</button></form>
+  </div>
+  <form method="dialog" class="foot"><button type="button" id="kbReset" class="kbd-only">Reset to defaults</button><button>Close</button></form>
 </dialog>
 
 <dialog id="settings">
@@ -173,8 +195,8 @@
     <select id="sBuffer"><option value="0">None</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
     <span class="hint">Screenshots for the next cards load while you look at this one. Each card asks the tracker for one page, one at a time, 3 seconds apart, and never again once saved. None asks only for a card you stay on.</span>
   </div>
-  <h4>Keyboard</h4>
-  <div class="set">
+  <h4 class="kbd-only">Keyboard</h4>
+  <div class="set kbd-only">
     <label for="sKeys">Single-key shortcuts</label><input id="sKeys" type="checkbox">
     <span class="hint">To change a key, click ? at the top right, then click the key. Turn off if speech input or a screen reader sends stray keys; arrows, Enter and Esc keep working.</span>
   </div>

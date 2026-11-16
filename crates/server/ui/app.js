@@ -67,6 +67,9 @@ const S = {
 };
 const $ = s => document.querySelector(s);
 const touch = () => matchMedia("(pointer: coarse)").matches;
+// Touch screens get touch words and no key hints; a keyboard on a tablet brings them back.
+function markTouch() { document.documentElement.classList.toggle("touch", touch()); }
+markTouch(); matchMedia("(pointer: coarse)").addEventListener("change", () => { markTouch(); renderKeys(); });
 const main = $("#main");
 
 /* ===== api ===== */
@@ -305,7 +308,9 @@ function renderTarget() {
   const t = $("#target"), it = flat.find(i => i.id === S.focus);
   const what = S.sel.size ? `${S.sel.size} selected` : it ? esc(code(it)) : "—";
   t.classList.toggle("rating", !!rateArmed);
-  t.innerHTML = rateArmed ? `${S.sel.size ? `Rate ${S.sel.size} selected` : "Rate it"}<b>1–5, or 0 to clear</b>` : blind() && flat.length ? `Applies to<b>Tap a torrent first</b>` : `Applies to<b>${what}</b>`;
+  t.innerHTML = rateArmed ? `${S.sel.size ? `Rate ${S.sel.size} selected` : "Rate it"}<b>1–5, or 0 to clear</b>` : blind() && flat.length ? `Applies to<b>Tap a torrent first</b>`
+    : `Applies to<b>${what}</b>${touch() && it && !S.sel.size ? `<small>Tap it again for details</small>` : ""}`;
+  main.classList.toggle("blind", blind());
 }
 const syncFailed = ls => /^error/.test(ls?.stop_reason ?? "");
 function stopText(reason) {
@@ -657,7 +662,7 @@ function hideToast() { clearTimeout(toastT); $("#toast").classList.remove("show"
 function toast(msg, undo = true) {
   $("#toastMsg").textContent = msg; $("#undoBtn").hidden = !undo;
   $("#toast").classList.add("show"); clearTimeout(toastT);
-  toastT = setTimeout(() => $("#toast").classList.remove("show"), 4500);
+  toastT = setTimeout(() => $("#toast").classList.remove("show"), touch() ? 8000 : 4500);
 }
 const leaves = mark => S.view !== "all" && (S.view === "new" ? mark !== null : mark !== S.view);
 async function setMark(ids, mark, {advance = false} = {}) {
@@ -758,7 +763,7 @@ function bulkViewed(g) {
     bulkArm = {g, timer: setTimeout(disarmBulk, 5000)};
     const b = main.querySelector(`[data-bulk="${CSS.escape(g)}"]`);
     if (b) b.outerHTML = bulkButton(g, ids.length);
-    return toast(`Move ${plural(ids.length, "torrent")} to Viewed? Press ${keyOf("bulk")} again or click Confirm.`, false);
+    return toast(touch() ? `Tap Confirm to move ${plural(ids.length, "torrent")} to Viewed.` : `Move ${plural(ids.length, "torrent")} to Viewed? Press ${keyOf("bulk")} again or click Confirm.`, false);
   }
   disarmBulk();
   setMark(ids, "viewed"); // its own toast (with Undo) replaces the confirm prompt
@@ -825,7 +830,7 @@ function renderSwMedia() {
   m.innerHTML = `<span class="sw-code">${esc(code(it))}</span>${url ? `<img src="${esc(url)}" alt="" referrerpolicy="no-referrer" draggable="false" onerror="this.remove()">` : ""}
   ${slides.length > 1 ? `<div class="sw-bars" aria-hidden="true">${slides.map((_, i) => `<i class="${i === SW.photo ? "on" : ""}"></i>`).join("")}</div>` : ""}${note}
   ${url ? `<button class="sw-zoom" data-sw="zoom" aria-label="View full screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-6 6M4 20l6-6"/></svg></button>` : ""}
-  ${url && swBlurred() ? `<button class="sw-reveal" data-sw="reveal">Show (${esc(keyOf("lbReveal"))})</button>` : ""}`;
+  ${url && swBlurred() ? `<button class="sw-reveal" data-sw="reveal">${touch() ? "Show" : `Show (${esc(keyOf("lbReveal"))})`}</button>` : ""}`;
   slides.forEach(preload);
   swPrefetch();
 }
@@ -1231,9 +1236,10 @@ function renderKeys() {
   }
   $("#kbViewerJK").textContent = `${keyOf("next")} ${keyOf("prev")}`;
   $("#kbReset").disabled = Object.entries(KEYS).every(([a, k]) => k === KEY_DEFAULTS[a]);
-  $("#q").placeholder = `Search titles or uploaders  ( ${keyOf("search")} )`;
-  $("#helpBtn").title = `Keyboard shortcuts (${keyOf("help")})`;
-  $("#lbReveal").textContent = `Show image (${keyOf("lbReveal")})`;
+  $("#q").placeholder = touch() ? "Search titles or uploaders" : `Search titles or uploaders  ( ${keyOf("search")} )`;
+  $("#helpBtn").title = touch() ? "How to use bbt by touch" : `Keyboard shortcuts (${keyOf("help")})`;
+  $("#helpBtn").textContent = touch() ? "Help" : "?";
+  $("#lbReveal").textContent = touch() ? "Show image" : `Show image (${keyOf("lbReveal")})`;
   $("#vSwipe").title = `Swipe through new torrents (${keyOf("swipe")})`;
   swHint();
   renderBins();

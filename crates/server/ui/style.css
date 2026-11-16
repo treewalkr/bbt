@@ -253,6 +253,7 @@ dialog .foot button{border:1px solid var(--line);background:var(--raise);border-
   .bar-wrap{padding:8px;flex-wrap:wrap;gap:6px}
   .bar-wrap .target{display:flex;align-items:baseline;gap:6px;white-space:nowrap;width:auto;flex:1 1 100%;min-width:0;padding:0 4px}
   .bar-wrap .target b{display:inline;max-width:none;min-width:0}
+  .bar-wrap .target small{display:inline;margin-left:auto;flex:none}
   .rail{display:none}
   .row,.colhead{grid-template-columns:4px 44px minmax(0,1fr) 64px;padding-right:12px}
   .colhead>span:nth-child(2){display:none}
@@ -414,3 +415,17 @@ body:has(#swipe:not([hidden])) .toast{bottom:12px}
 .lightbox.zoomed .lb-close,.lightbox.zoomed .lb-bar{z-index:2}
 .lightbox.zoomed .lb-bar{background:#000b;padding:8px 14px;border-radius:var(--r-m);margin-bottom:10px}
 .lightbox.zoomed .lb-close{background:#000a}
+
+/* ---------- touch: touch words and gestures, no key hints ---------- */
+.touch-only{display:none}
+.touch .touch-only{display:block}
+.touch .kbd-only{display:none}
+.touch .bin kbd,.touch .states kbd{display:none}
+.gestures section+section{margin-top:4px}
+.gestures ul{margin:0;padding-left:18px;color:var(--muted);line-height:1.5}
+.gestures li+li{margin-top:6px}
+.gestures b{color:var(--text);font-weight:600}
+.target small{display:block;color:var(--faint);font-size:12px}
+/* Until a torrent is tapped on touch, the first row isn't really picked: don't draw it as if it were. */
+main.blind .row.focus{background:none}
+main.blind .row.focus .bar{background:transparent}
