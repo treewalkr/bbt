@@ -156,6 +156,11 @@ pub struct Summary {
     pub new_by_category: BTreeMap<u16, u64>,
     /// Upload time of the oldest non-sticky torrent synced, if any.
     pub oldest_uploaded_at: Option<i64>,
+    /// New, non-sticky torrents uploaded before `from`, per category id: work the
+    /// date range hides.
+    pub older_new_by_category: BTreeMap<u16, u64>,
+    /// Upload time of the oldest of those.
+    pub older_new_from: Option<i64>,
 }
 
 pub const MAX_LIMIT: u32 = 5000;
@@ -380,8 +385,26 @@ impl Store {
             let (cat, n) = row?;
             new_by_category.insert(cat, n);
         }
+        let mut older_new_by_category = BTreeMap::new();
+        let mut stmt = self.conn.prepare(
+            "SELECT t.category, COUNT(*) FROM torrents t LEFT JOIN marks m ON m.torrent_id = t.id
+             WHERE m.state IS NULL AND t.sticky = 0 AND t.uploaded_at < ?1
+             GROUP BY t.category",
+        )?;
+        for row in stmt.query_map([from], |r| Ok((r.get::<_, u16>(0)?, r.get(1)?)))? {
+            let (cat, n) = row?;
+            older_new_by_category.insert(cat, n);
+        }
+        let older_new_from = self.conn.query_row(
+            "SELECT MIN(t.uploaded_at) FROM torrents t LEFT JOIN marks m ON m.torrent_id = t.id
+             WHERE m.state IS NULL AND t.sticky = 0 AND t.uploaded_at < ?1",
+            [from],
+            |r| r.get(0),
+        )?;
         let count = |m: Mark| by_state.get(m.as_str()).copied().unwrap_or(0);
         Ok(Summary {
+            older_new_by_category,
+            older_new_from,
             new: new_by_category.values().sum(),
             viewed: count(Mark::Viewed),
             view_later: count(Mark::ViewLater),
@@ -686,7 +709,12 @@ mod tests {
             (1, 1, 1, 4)
         );
         assert_eq!(sum.new_by_category, BTreeMap::from([(3, 1)]));
-        assert_eq!(s.summary(Some(5000)).unwrap().new, 0);
+        let later = s.summary(Some(5000)).unwrap();
+        assert_eq!(later.new, 0);
+        // Torrent 3 (uploaded at 3000) is still unsorted, just before the range.
+        assert_eq!(later.older_new_by_category, BTreeMap::from([(3, 1)]));
+        assert_eq!(later.older_new_from, Some(3000));
+        assert!(sum.older_new_by_category.is_empty());
         assert_eq!(
             sum.oldest_uploaded_at,
             Some(1000),
