@@ -57,7 +57,7 @@ function loadCats() {
 function saveCats() {
   const categories = [...S.cats];
   localStorage.setItem("bbt_cats", JSON.stringify(categories));
-  api("PUT", "/api/prefs", {categories}).catch(e => toast(`Couldn't save categories: ${e.message}`, false));
+  api("PUT", "/api/prefs", {categories}).catch(e => toast(`Couldn't save categories. ${e.message}`, false));
 }
 const S = {
   view:"new", cats:loadCats(), range:"0", from:"", sort:"new", q:"",
@@ -71,10 +71,22 @@ const main = $("#main");
 
 /* ===== api ===== */
 async function api(method, path, body) {
-  const res = await fetch(path, {method, headers: body ? {"content-type":"application/json"} : {}, body: body ? JSON.stringify(body) : undefined});
+  let res;
+  try { res = await fetch(path, {method, headers: body ? {"content-type":"application/json"} : {}, body: body ? JSON.stringify(body) : undefined}); }
+  catch { throw new Error("Can't reach bbt. Check that the server is running."); }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(plainError(data.error || `${res.status} ${res.statusText}`));
   return data;
+}
+// Server and tracker errors in plain words: no URLs or library text on screen.
+function plainError(raw) {
+  const m = String(raw ?? "");
+  if (/timed out|timeout/i.test(m)) return "The tracker didn't answer in time. Try again in a minute.";
+  if (/error sending request|connection|connect error|dns|refused|unreachable/i.test(m)) return "Can't reach the tracker. Check the connection, then try again.";
+  if (/not logged in|login failed/i.test(m)) return "Couldn't log in to the tracker. Check the username and password in .env.";
+  if (/unexpected response|layout not recognised/i.test(m)) return "The tracker sent a page bbt doesn't recognise. Try again later.";
+  const t = m.replace(/\s*\(?(for url\s*)?\(?https?:\/\/[^\s)]+\)?/gi, "").replace(/^(tracker|error):\s*/i, "").trim();
+  return t ? t[0].toUpperCase() + t.slice(1) + (/[.!?]$/.test(t) ? "" : ".") : "Something went wrong.";
 }
 
 /* ===== time ===== */
@@ -172,7 +184,7 @@ async function load() {
     banner(null);
     render();
   } catch (e) {
-    banner(`Can't load torrents: ${e.message}. Is bbt-server running?`);
+    banner(`Can't load torrents. ${e.message}`);
   }
 }
 async function refreshSummary() {
@@ -295,12 +307,37 @@ function renderTarget() {
   t.classList.toggle("rating", !!rateArmed);
   t.innerHTML = rateArmed ? `${S.sel.size ? `Rate ${S.sel.size} selected` : "Rate it"}<b>1–5, or 0 to clear</b>` : blind() && flat.length ? `Applies to<b>Tap a torrent first</b>` : `Applies to<b>${what}</b>`;
 }
+const syncFailed = ls => /^error/.test(ls?.stop_reason ?? "");
+function stopText(reason) {
+  if (/^error/.test(reason ?? "")) return `failed. ${plainError(reason)}`;
+  return {"reached cutoff": "caught up with the previous sync", "page cap reached, older items skipped": "stopped at the 12-page limit, older uploads skipped",
+    "empty page": "stopped at an empty page", "page layout not recognised": "stopped: the tracker page looked different"}[reason] ?? reason ?? "";
+}
 function renderSyncText() {
   if (S.syncing) return;
   const ls = S.summary?.last_sync;
   $("#syncText").textContent = !ls ? "Not synced yet"
-    : `Synced ${fmtWhen(ls.finished_at)}, ${ls.new_count} new${/page cap/.test(ls.stop_reason ?? "") ? ". Older uploads were skipped." : /error/.test(ls.stop_reason ?? "") ? ". Last sync failed." : ""}`;
-  $("#sLast").textContent = ls ? `${fmtWhen(ls.finished_at)}: ${ls.pages} page(s), ${ls.new_count} new, ${ls.stop_reason}` : "Never";
+    : syncFailed(ls) ? `Sync failed at ${fmtWhen(ls.finished_at)}. ${plainError(ls.stop_reason)}`
+    : `Synced ${fmtWhen(ls.finished_at)}, ${ls.new_count} new${/page cap/.test(ls.stop_reason ?? "") ? ". Older uploads were skipped." : ""}`;
+  $("#sLast").textContent = !ls ? "Never" : syncFailed(ls) ? `${fmtWhen(ls.finished_at)}: ${stopText(ls.stop_reason)}`
+    : `${fmtWhen(ls.finished_at)}: ${plural(ls.pages, "page")}, ${ls.new_count} new, ${stopText(ls.stop_reason)}`;
+  renderSyncBtn();
+}
+// bbt waits 10 minutes between syncs; the button counts down instead of failing.
+let syncTick;
+async function checkSyncWait() {
+  try { const st = await api("GET", "/api/sync"); S.syncUntil = nowSec() + st.cooldown_seconds; } catch { S.syncUntil = 0; }
+  renderSyncBtn();
+}
+const syncWaitMin = () => Math.ceil(Math.max(0, (S.syncUntil ?? 0) - nowSec()) / 60);
+function renderSyncBtn() {
+  const btn = $("#syncBtn"), min = syncWaitMin();
+  clearTimeout(syncTick);
+  if (S.syncing) return;
+  btn.disabled = min > 0;
+  btn.textContent = min > 0 ? `Sync again in ${min} min` : "Sync now";
+  btn.title = min > 0 ? "bbt waits 10 minutes between syncs to go easy on the tracker" : "";
+  if (min > 0) syncTick = setTimeout(renderSyncBtn, 15000);
 }
 
 /* ===== drawer ===== */
@@ -321,7 +358,7 @@ function renderDrawer() {
   const hadFocus = $("#drawer").contains(document.activeElement); // re-rendering would drop it
   const d = detailsCache.get(it.id);
   const shots = !d ? shotsNote(it.id)
-    : d.error ? `<p class="err" title="${esc(d.error)}">Couldn't get screenshots from the tracker${/disabled/.test(d.error) ? " because tracker access is off (check .env)" : /not in the database/.test(d.error) ? " because this torrent is no longer in bbt" : ""}. <button class="linkbtn" data-act="retry">Try again</button></p>`
+    : d.error ? `<p class="err" title="${esc(d.error)}">Couldn't get screenshots${/disabled/.test(d.error) ? " because tracker access is off (check .env)." : /not in the database/.test(d.error) ? " because this torrent is no longer in bbt." : `. ${esc(d.error)}`} <button class="linkbtn" data-act="retry">Try again</button></p>`
     : d.images.length ? `<div class="shots">${d.images.map((u, i) => `<a href="${esc(u)}" data-shot="${i}" aria-label="View screenshot ${i + 1} of ${d.images.length}"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`).join("")}</div>`
     : `<p class="note">No screenshots on tracker for this torrent.</p>`;
   $("#drawerIn").innerHTML = `<header><span>${catsOn() ? esc(CATS[it.category] ?? `Category ${it.category}`) + " " : ""}<span style="color:var(--faint)">#${it.id}</span></span><button class="close" aria-label="Close details" data-act="close"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
@@ -409,7 +446,7 @@ async function refreshCounts(id) {
     detailsCache.set(id, {images: d.images});
     if (d.counts) applyCounts(id, d.counts);
     else toast("The tracker page didn't show counts.", false);
-  } catch (e) { toast(`Couldn't refresh counts: ${e.message}`, false); }
+  } catch (e) { toast(`Couldn't refresh counts. ${e.message}`, false); }
   S.refreshing.delete(id);
   detailsChanged(id);
 }
@@ -430,7 +467,7 @@ async function download(id) {
   S.downloading.add(id); if (S.drawer === id) renderDrawer();
   try {
     const res = await fetch(`/api/torrents/${id}/download`);
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+    if (!res.ok) throw new Error(plainError((await res.json().catch(() => ({}))).error || res.statusText));
     const cd = res.headers.get("content-disposition") || "";
     const star = cd.match(/filename\*=UTF-8''([^;]+)/);
     const name = star ? decodeURIComponent(star[1]) : `tracker-${id}.torrent`;
@@ -440,7 +477,7 @@ async function download(id) {
     toast(`Saved ${name}`, false);
     await setMark([id], "downloaded");
   } catch (e) {
-    toast(`Download failed: ${e.message}`, false);
+    toast(`Download failed. ${e.message}`, false);
   } finally {
     S.downloading.delete(id); if (S.drawer === id) renderDrawer();
   }
@@ -635,7 +672,7 @@ async function setMark(ids, mark, {advance = false} = {}) {
   S.sel.clear();
   let res;
   try { res = await api("POST", "/api/marks", {ids, mark}); }
-  catch (e) { toast(`Couldn't save: ${e.message}`, false); return load(); }
+  catch (e) { toast(`Couldn't save. ${e.message}`, false); return load(); }
   pushUndo({kind: "mark", previous: res.previous, mark});
   count(mark, ids.length);
   const nodes = leaving ? ids.map(id => main.querySelector(`[data-id="${id}"]`)).filter(Boolean) : [];
@@ -664,7 +701,7 @@ async function undoOne() {
   const byValue = new Map();
   for (const p of prev) { const k = p[key] ?? ""; if (!byValue.has(k)) byValue.set(k, []); byValue.get(k).push(p.id); }
   try { for (const [v, ids] of byValue) await api("POST", kind === "mark" ? "/api/marks" : "/api/ratings", {ids, [key]: v === "" ? null : v}); }
-  catch (e) { toast(`Undo failed: ${e.message}`, false); }
+  catch (e) { toast(`Undo failed. ${e.message}`, false); }
   S.focus = prev[0].id; historyCache.clear();
   await load(); scrollFocus();
   const left = S.undos.length;
@@ -968,7 +1005,7 @@ async function loadOlder() {
     O.budgetLeft = r.budget_left;
     if (r.status === "done") O.msg = `Read tracker page ${r.page + 1}: ${r.added} older upload${r.added === 1 ? "" : "s"} added. ${r.budget_left} page${r.budget_left === 1 ? "" : "s"} left today.`;
   } catch (e) {
-    O.msg = `Couldn't load older uploads: ${e.message}`; O.error = true;
+    O.msg = `Couldn't load older uploads. ${e.message}`; O.error = true;
   } finally {
     O.busy = false;
   }
@@ -981,7 +1018,7 @@ async function setRating(ids, stars) {
   if (!ids.length) return;
   let res;
   try { res = await api("POST", "/api/ratings", {ids, stars}); }
-  catch (e) { return toast(`Couldn't save rating: ${e.message}`, false); }
+  catch (e) { return toast(`Couldn't save rating. ${e.message}`, false); }
   pushUndo({kind: "rating", previous: res.previous});
   S.items.forEach(i => { if (ids.includes(i.id)) i.rating = stars; });
   S.sel.clear();
@@ -1001,6 +1038,7 @@ function armRate(on) {
 /* ===== sync ===== */
 async function doSync() {
   if (S.syncing) return;
+  if (syncWaitMin() > 0) return toast(`bbt waits 10 minutes between syncs. Try again in ${syncWaitMin()} min.`, false);
   S.syncing = true;
   const prog = $("#syncProg"), text = $("#syncText"), btn = $("#syncBtn");
   prog.hidden = false; prog.classList.add("busy"); btn.disabled = true;
@@ -1010,15 +1048,16 @@ async function doSync() {
   try {
     const r = await api("POST", "/api/sync");
     msg = r.status === "cooling_down"
-      ? `Synced recently. Try again in ${Math.ceil(r.seconds_left / 60)} min.`
-      : `Synced just now: ${r.new_count} new from ${r.pages} page(s).${r.complete ? "" : ` Stopped early: ${r.stop}.`}`;
+      ? `Sync again in ${Math.ceil(r.seconds_left / 60)} min: bbt waits 10 minutes between syncs.`
+      : `Synced just now: ${r.new_count} new from ${plural(r.pages, "page")}.${r.complete ? "" : ` It ${stopText(r.stop)}.`}`;
   } catch (e) {
-    msg = `Sync failed: ${e.message}`;
+    msg = `Sync failed. ${e.message}`;
   } finally {
     S.syncing = false; prog.hidden = true; prog.classList.remove("busy"); btn.disabled = false;
   }
   await load();
   text.textContent = msg;
+  checkSyncWait();
 }
 async function maybeSyncOnOpen() {
   if (localStorage.getItem("bbt_sync_on_open") !== "1") return; // off unless turned on
@@ -1284,5 +1323,6 @@ $("#help").addEventListener("close", () => { stopCapture(); kbMsg("Click a key t
     }
   } catch { /* keep the local copy */ }
   await load();
+  checkSyncWait();
   maybeSyncOnOpen();
 })();
