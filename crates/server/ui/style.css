@@ -134,7 +134,9 @@ main.mixed .card[data-state=viewed]{opacity:.55}
 .empty h3{font-family:"Bricolage Grotesque";font-size:30px;color:var(--text);margin:0 0 8px}
 .empty .tally{color:var(--text);font-size:15px;margin:0 0 6px}
 .empty .tally b{font-family:"Bricolage Grotesque";font-weight:700;font-size:18px}
-.empty .ghost{margin-right:8px;background:none}
+.empty .ghost{margin-left:8px;margin-right:8px;background:none}
+.empty .backlog{color:var(--text);margin:14px 0 0}
+.sw-done .ghost{margin:10px 0 0}
 .activity{margin:18px auto 4px;width:max-content;max-width:100%}
 .activity:empty{display:none}
 .activity p{margin:8px 0 0;font-size:13px;color:var(--muted)}

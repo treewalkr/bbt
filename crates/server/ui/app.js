@@ -121,6 +121,32 @@ function rangeText() {
   if (S.range === "custom") return S.from ? `since ${new Date(S.from + "T12:00:00+07:00").toLocaleDateString("en-GB", {day:"numeric", month:"short"})}` : "today";
   return {"0":"today", "2":"in the last 3 days", "6":"in the last 7 days"}[S.range] ?? "in this date range";
 }
+// Unsorted torrents the date range hides, in the selected categories.
+function olderNew() {
+  const by = S.summary?.counts.older_new_by_category ?? {};
+  return Object.entries(by).reduce((a, [k, n]) => a + (!catsOn() || S.cats.has(+k) ? n : 0), 0);
+}
+// "matching “x”, free" etc.: the filters that narrow a list beyond its date range.
+function filterText() {
+  const parts = [];
+  if (S.q) parts.push(`matching “${esc(S.q)}”`);
+  if (S.free) parts.push("free");
+  if (catsOn() && S.cats.size < Object.keys(CATS).length) parts.push(`in ${S.cats.size} ${S.cats.size === 1 ? "category" : "categories"}`);
+  return parts.join(", ");
+}
+function backlogHTML() {
+  const n = olderNew(), from = S.summary?.counts.older_new_from;
+  if (!n || !from) return "";
+  const day = new Date((from + ICT) * 1000).toLocaleDateString("en-GB", {day: "numeric", month: "short", timeZone: "UTC"});
+  return `<p class="backlog"><b>${plural(n, "older torrent")}</b> ${n === 1 ? "is" : "are"} still unsorted, back to ${day}.</p><button data-act="showolder">Show ${n === 1 ? "it" : `all ${n}`}</button>`;
+}
+// Widen the range to the oldest unsorted torrent, so nothing waits out of sight.
+function showOlder() {
+  const from = S.summary?.counts.older_new_from;
+  if (!from) return;
+  S.range = $("#range").value = "custom"; S.from = $("#from").value = dayKey(from); $("#customWrap").hidden = false;
+  showView("new");
+}
 function syncRange() {
   const on = dated();
   $("#range").disabled = !on; $("#from").disabled = !on;
@@ -215,7 +241,9 @@ function render() {
     if (catsOn() && !S.cats.size) msg = `<h3>No categories selected</h3><p>Tick at least one category on the left to see torrents.</p><button data-act="allcats">Select all categories</button>`;
     else if (S.q || S.free) msg = `<h3>No matches</h3><p>Nothing in ${label}${S.q ? ` matches “${esc(S.q)}”` : ""}${S.free ? `${S.q ? " and is" : " is"} free` : ""}${dated() ? ` ${rangeText()}` : ""}.</p><button data-act="clearfilters">Clear ${S.q && S.free ? "search and Free only" : S.q ? "search" : "Free only"}</button>`;
     else if (!total) msg = `<h3>No torrents yet</h3><p>Sync to fetch the latest uploads from tracker.</p><button data-act="sync">Sync now</button>`;
-    else if (S.view === "new") msg = `<h3>All caught up</h3>${tallyHTML()}${ACTIVITY}<p>Nothing new ${rangeText()}. Sync to check the tracker for new uploads.</p><button data-act="sync">Sync now</button>`;
+    else if (S.view === "new") msg = olderNew()
+      ? `<h3>All caught up ${rangeText()}</h3>${tallyHTML()}${ACTIVITY}${backlogHTML()}<button data-act="sync" class="ghost">Sync now</button>`
+      : `<h3>All caught up</h3>${tallyHTML()}${ACTIVITY}<p>Nothing new ${rangeText()}. Sync to check the tracker for new uploads.</p><button data-act="sync">Sync now</button>`;
     else msg = `<h3>Nothing in ${label}</h3><p>${MARKS[S.view] ? `Press ${keyOf(S.view)} on a torrent to add it here.` : "Try a wider date range."}</p>`;
     main.innerHTML = `<div class="empty">${msg}</div>`;
     fillActivity();
@@ -236,7 +264,7 @@ function render() {
   if (S.view === "all" && S.sort === "new" && S.summary?.counts.total) {
     main.insertAdjacentHTML("beforeend", olderHTML());
     const el = $("#older"); if (el) olderObserver.observe(el);
-  } else if (oldest && S.view === "new" && cutoff() < oldest - 3600) {
+  } else if (oldest && S.view === "new" && flat.length && cutoff() < oldest - 3600) {
     main.insertAdjacentHTML("beforeend", `<p class="coverage">bbt has every upload back to ${fmtWhen(oldest)}. Earlier ones aren't loaded yet, so this list can't go further back. Open Everything and scroll to the end to load older pages.</p>`);
   }
   if (keepBanner) main.prepend(keepBanner);
@@ -779,7 +807,8 @@ function renderSwipe() {
   for (const b of $("#swActs").querySelectorAll("button")) b.disabled = !it;
   if (!it) {
     SW.cur = null; clearTimeout(SW.fetchT);
-    $("#swDeck").innerHTML = `<div class="empty sw-done"><h3>All caught up</h3>${tallyHTML()}${ACTIVITY}<p>You've sorted every new torrent ${rangeText()}.</p><button data-sw="close">Back to the list</button></div>`;
+    const f = filterText();
+    $("#swDeck").innerHTML = `<div class="empty sw-done"><h3>All caught up</h3>${tallyHTML()}${ACTIVITY}<p>You've sorted every new torrent ${f ? `${f} ` : ""}${rangeText()}.</p>${f && (S.q || S.free) ? `<button data-act="clearfilters">Clear ${S.q && S.free ? "search and Free only" : S.q ? "search" : "Free only"}</button>` : backlogHTML()}<button data-sw="close" class="ghost">Back to the list</button></div>`;
     fillActivity();
     return;
   }
@@ -867,6 +896,8 @@ $("#swipe").addEventListener("click", e => {
   const v = e.target.closest("[data-view]");
   if (v) { closeSwipe(); return showView(v.dataset.view); }
   const a = e.target.closest("[data-sw]")?.dataset.sw;
+  if (e.target.closest("[data-act=clearfilters]")) { closeSwipe(); S.q = ""; $("#q").value = ""; S.free = false; $("#freeOnly").checked = false; return load(); }
+  if (e.target.closest("[data-act=showolder]")) { closeSwipe(); return showOlder(); }
   if (a === "close") closeSwipe();
   else if (a === "reveal") swReveal();
   else if (a === "zoom") swFull();
@@ -1003,6 +1034,7 @@ main.addEventListener("click", e => {
   if (e.target.closest("[data-act=sync]")) return doSync();
   const jump = e.target.closest("[data-view]"); if (jump) return showView(jump.dataset.view);
   if (e.target.closest("[data-act=clearfilters]")) { S.q = ""; $("#q").value = ""; S.free = false; $("#freeOnly").checked = false; return load(); }
+  if (e.target.closest("[data-act=showolder]")) return showOlder();
   if (e.target.closest("[data-act=allcats]")) { S.cats = new Set(Object.keys(CATS).map(Number)); saveCats(); return load(); }
   if (e.target.closest("[data-act=older]")) { O.error = false; return loadOlder(); }
   const bulk = e.target.closest("[data-bulk]"); if (bulk) return bulkViewed(bulk.dataset.bulk);
