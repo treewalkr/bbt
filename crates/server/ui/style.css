@@ -1,7 +1,7 @@
 :root{
   --ink:#1B1622; --panel:#251E2E; --raise:#2F2639; --line:#3A3046;
   --text:#EEE7F3; --muted:#A79BB4; --faint:#8E839B; /* faint: 4.5:1 on panel, 5:1 on ink */
-  --new:#E2557A; --viewed:#B7ABC4; --watch:#E8B04B; --get:#4FB3A9; --got:#8BC66E;
+  --new:#E2557A; --top:#F08A4B; --viewed:#B7ABC4; --watch:#E8B04B; --get:#4FB3A9; --got:#8BC66E;
   --focus:#F2D3E0;
   --r-s:4px; --r-m:8px;
   --row:76px;

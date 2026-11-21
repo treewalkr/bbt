@@ -56,6 +56,11 @@ Sync never crawls the archive. Each run:
 
 Details pages are fetched only when you open a torrent or download it.
 
+**Most seeded** mirrors the tracker's list sorted by seeders (`?sortby=8`), in the
+tracker's order. Opening it reads the first 3 pages again (about 150 torrents, 3 seconds
+apart) so the order and counts match the site, at most once every 10 minutes; in between
+it shows the copy from the last read. Marks show as tags and marking doesn't remove rows.
+
 To go further back, open **Everything**, pick a **From** date and scroll to the end:
 each load reads exactly one older tracker page, up to 40 pages a day, and stops at
 the From date.

@@ -40,7 +40,7 @@ const keyOf = a => keyName(KEYS[a]);
 // Shift 1 is "!" on US keyboards; match the physical key so other layouts work too.
 const hit = (a, e) => e.key === KEYS[a] || (KEYS[a] === "!" && e.shiftKey && e.code === "Digit1");
 const VIEWS = [
-  ["new","New","var(--new)"],["view_later","View later","var(--watch)"],["download_later","Download later","var(--get)"],
+  ["new","New","var(--new)"],["top","Most seeded","var(--top)"],["view_later","View later","var(--watch)"],["download_later","Download later","var(--get)"],
   ["downloaded","Downloaded","var(--got)"],["viewed","Viewed","var(--viewed)"],["all","Everything","var(--faint)"],
 ];
 const DAY = 86400, ICT = 7 * 3600;
@@ -131,6 +131,8 @@ function poster(it) {
 
 // Only New and Everything are filtered by date ("From"); the sorted lists hold everything.
 const dated = () => S.view === "new" || S.view === "all";
+// Lists that keep every torrent whatever its mark, so marks show as tags and rows stay put.
+const mixedView = () => S.view === "all" || S.view === "top";
 function rangeText() {
   if (S.range === "last") return S.lastVisit ? "since your last visit" : "in the last day";
   if (S.range === "custom") return S.from ? `since ${new Date(S.from + "T12:00:00+07:00").toLocaleDateString("en-GB", {day:"numeric", month:"short"})}` : "today";
@@ -166,6 +168,8 @@ function syncRange() {
   const on = dated();
   $("#range").disabled = !on; $("#from").disabled = !on;
   $("#rangeField").title = on ? "" : "From only filters New and Everything";
+  const top = S.view === "top";
+  $("#sort").disabled = top; $("#sort").title = top ? "Most seeded keeps the tracker's order" : "";
 }
 
 /* ===== loading ===== */
@@ -203,6 +207,10 @@ function banner(msg) {
 /* ===== grouping ===== */
 let flat = [];
 function groups() {
+  if (S.view === "top") {
+    const at = S.summary?.top?.fetched_at;
+    return [{key:"top", label:`On the tracker${at ? `, read ${fmtAgo(at)}` : ""}`, items:S.items}];
+  }
   if (S.sort !== "new") return [{key:"all", label:VIEWS.find(v => v[0] === S.view)[1], items:S.items}];
   const m = new Map();
   for (const it of S.items) { const k = dayKey(it.uploaded_at); if (!m.has(k)) m.set(k, []); m.get(k).push(it); }
@@ -219,14 +227,14 @@ function otherTag(it) {
   return `<span class="tag ${o.mark ? "state" : ""}" ${o.mark ? `style="--state:${MARKS[o.mark].c}"` : ""} title="${esc(tip)}">${label}</span>`;
 }
 function tags(it) {
-  const mark = S.view === "all" && it.mark ? `<span class="tag state" style="--state:${MARKS[it.mark].c}">${MARKS[it.mark].label}</span>` : "";
+  const mark = mixedView() && it.mark ? `<span class="tag state" style="--state:${MARKS[it.mark].c}">${MARKS[it.mark].label}</span>` : "";
   return `${catsOn() ? `<span class="tag">${esc(CATS[it.category] ?? `Category ${it.category}`)}</span>` : ""}${it.sticky ? '<span class="tag sticky">Sticky</span>' : ""}${it.free ? '<span class="tag free">Free</span>' : ""}${it.multiplier ? `<span class="tag free">${esc(it.multiplier)} up</span>` : ""}${mark}${otherTag(it)}${it.rating ? `<span class="stars" title="Your rating: ${it.rating} of 5">★${it.rating}</span>` : ""}<span>${esc(it.uploader ?? "")}</span>`;
 }
 const stateOf = it => it.mark ?? "new";
 const stateAttr = it => ({viewed:"viewed", view_later:"watch", download_later:"get", downloaded:"got", new:"new"})[stateOf(it)];
 // One number column, and it follows the sort: seeders by default, else what you sorted by.
 const STATS = {seed:["Seeds", "seeders"], leech:["Leech", "leechers"], snatch:["Snatched", "snatched"]};
-const stat = () => STATS[S.sort] ?? STATS.seed;
+const stat = () => S.view === "top" ? STATS.seed : STATS[S.sort] ?? STATS.seed;
 function rowHTML(it, byDay) {
   const [, key] = stat();
   return `<div class="row${S.focus === it.id ? " focus" : ""}" data-id="${it.id}" data-state="${stateAttr(it)}" role="option" aria-selected="${S.focus === it.id}">
@@ -247,7 +255,7 @@ function render() {
   const gs = groups(); shown = gs; flat = gs.flatMap(g => g.items);
   if (S.focus && !flat.some(i => i.id === S.focus)) S.focus = null;
   if (!S.focus && flat.length) S.focus = flat[0].id;
-  const byDay = S.sort === "new";
+  const byDay = S.sort === "new" && S.view !== "top";
   const keepBanner = $(".banner");
   if (!flat.length) {
     const total = S.summary?.counts.total ?? 0;
@@ -255,6 +263,8 @@ function render() {
     let msg;
     if (catsOn() && !S.cats.size) msg = `<h3>No categories selected</h3><p>Tick at least one category on the left to see torrents.</p><button data-act="allcats">Select all categories</button>`;
     else if (S.q || S.free) msg = `<h3>No matches</h3><p>Nothing in ${label}${S.q ? ` matches “${esc(S.q)}”` : ""}${S.free ? `${S.q ? " and is" : " is"} free` : ""}${dated() ? ` ${rangeText()}` : ""}.</p><button data-act="clearfilters">Clear ${S.q && S.free ? "search and Free only" : S.q ? "search" : "Free only"}</button>`;
+    else if (S.view === "top") msg = TOP.busy ? `<h3>Reading the tracker…</h3><p>Loading the ${TOP_PAGES} most seeded pages, a few seconds apart.</p>`
+      : `<h3>Nothing in Most seeded yet</h3><p>${esc(TOP.msg || "Open this list again to read it from the tracker.")}</p><button data-act="top">Read it now</button>`;
     else if (!total) msg = `<h3>No torrents yet</h3><p>Sync to fetch the latest uploads from tracker.</p><button data-act="sync">Sync now</button>`;
     else if (S.view === "new") msg = olderNew()
       ? `<h3>All caught up ${rangeText()}</h3>${tallyHTML()}${ACTIVITY}${backlogHTML()}<button data-act="sync" class="ghost">Sync now</button>`
@@ -266,7 +276,7 @@ function render() {
     const total = S.summary?.counts.total ?? 0;
     const head = S.grid ? "" : `<div class="colhead"><span></span><span></span><span></span><span class="l">${S.view === "all" && total > flat.length && flat.length < 5000 ? `Title · ${flat.length} uploaded ${rangeText()}, of ${total} in bbt` : flat.length >= 5000 ? "Title · first 5000 shown" : "Title"}</span><span>Size</span><span class="c-stat">${stat()[0]}</span><span class="c-time">${byDay ? "Time" : "Age"}</span></div>`;
     main.classList.toggle("has-colhead", !S.grid);
-    main.classList.toggle("mixed", S.view === "all"); // the only list where states differ
+    main.classList.toggle("mixed", mixedView()); // the lists where states differ
     main.innerHTML = head + gs.map(g => {
       const nNew = g.items.filter(i => !i.mark).length;
       return `<section class="group" data-g="${g.key}"><div class="ghead"><h3>${esc(g.label)}</h3>
@@ -289,7 +299,7 @@ function render() {
 }
 function renderNav() {
   const c = S.summary?.counts;
-  const n = k => !c ? "" : k === "new" ? c.new : k === "all" ? c.total : c[k];
+  const n = k => !c ? "" : k === "new" ? c.new : k === "all" ? c.total : k === "top" ? S.summary.top?.count || "" : c[k];
   const [, label, col] = VIEWS.find(v => v[0] === S.view);
   $("#railBtn").innerHTML = `<i class="dot" style="background:${col}"></i>${label}<span class="n">${n(S.view)}</span>`;
   $("#views").innerHTML = "<h2>Lists</h2>" + VIEWS.map(([k, l, col]) => `<button data-view="${k}" aria-current="${S.view === k}" style="--c:${col}"><i class="dot"></i>${l}<span class="n">${n(k)}</span></button>`).join("");
@@ -672,7 +682,7 @@ function toast(msg, undo = true) {
   $("#toast").classList.add("show"); clearTimeout(toastT);
   toastT = setTimeout(() => $("#toast").classList.remove("show"), touch() ? 8000 : 4500);
 }
-const leaves = mark => S.view !== "all" && (S.view === "new" ? mark !== null : mark !== S.view);
+const leaves = mark => !mixedView() && (S.view === "new" ? mark !== null : mark !== S.view);
 async function setMark(ids, mark, {advance = false} = {}) {
   ids = ids.filter(id => S.items.some(i => i.id === id));
   if (!ids.length) return;
@@ -1049,6 +1059,30 @@ function armRate(on) {
   renderTarget(); swHint();
 }
 
+/* ===== most seeded ===== */
+// Opening Most seeded reads the tracker's seeders-sorted list again (3 pages), at
+// most every 10 minutes; in between it shows the copy from the last read.
+const TOP_PAGES = 3;
+const TOP = {busy:false, msg:""};
+async function refreshTop() {
+  if (TOP.busy || S.syncing) return;
+  await load(); // the copy from the last read, straight away
+  if (S.view !== "top") return;
+  TOP.busy = true;
+  if (!S.items.length) render();
+  else banner(`Reading the ${TOP_PAGES} most seeded pages from the tracker…`);
+  try {
+    const r = await api("POST", "/api/top");
+    TOP.msg = r.status === "cooling_down" ? `Read less than 10 minutes ago. bbt reads it again in ${Math.ceil(r.seconds_left / 60)} min.` : "";
+  } catch (e) {
+    TOP.msg = `Couldn't read the tracker. ${e.message}`;
+    if (S.view === "top") toast(TOP.msg, false);
+  } finally {
+    TOP.busy = false;
+    if (S.view === "top") { banner(null); await load(); }
+  }
+}
+
 /* ===== sync ===== */
 async function doSync() {
   if (S.syncing) return;
@@ -1085,6 +1119,7 @@ async function maybeSyncOnOpen() {
 /* ===== events ===== */
 main.addEventListener("click", e => {
   if (e.target.closest("[data-act=sync]")) return doSync();
+  if (e.target.closest("[data-act=top]")) { TOP.msg = ""; return refreshTop(); }
   const jump = e.target.closest("[data-view]"); if (jump) return showView(jump.dataset.view);
   if (e.target.closest("[data-act=clearfilters]")) { S.q = ""; $("#q").value = ""; S.free = false; $("#freeOnly").checked = false; return load(); }
   if (e.target.closest("[data-act=showolder]")) return showOlder();
@@ -1121,7 +1156,7 @@ $("#drawerIn").addEventListener("click", e => {
   }
   if (e.target.closest("[data-act=allreleases]")) return showRelease(S.items.find(i => i.id === S.drawer));
 });
-function showView(v) { S.view = v; S.focus = null; S.picked = false; S.sel.clear(); main.scrollTop = 0; setRail(false); load(); }
+function showView(v) { S.view = v; S.focus = null; S.picked = false; S.sel.clear(); main.scrollTop = 0; setRail(false); v === "top" ? refreshTop() : load(); }
 // Below 760px the rail is a sheet and the toolbar controls fold into View.
 function setRail(on) {
   $("#rail").classList.toggle("open", on); $("#scrim").hidden = !on; $("#railBtn").ariaExpanded = String(on);
