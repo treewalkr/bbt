@@ -79,6 +79,15 @@ impl Site {
         }
     }
 
+    /// Page `n` of the list sorted by seeders, most first (the tracker's `sortby=8`).
+    pub fn top_seeded_page(&self, n: u32) -> String {
+        if n == 0 {
+            format!("{}?sortby=8", self.list_path)
+        } else {
+            format!("{}?sortby=8&page={n}", self.list_path)
+        }
+    }
+
     pub fn details_page(&self, id: u64, hash_id: u64) -> String {
         self.details_template()
             .replace("{id}", &id.to_string())
@@ -422,6 +431,8 @@ mod tests {
         let site = Site::default();
         assert_eq!(site.list_page(0), "browse.php");
         assert_eq!(site.list_page(3), "browse.php?page=3");
+        assert_eq!(site.top_seeded_page(0), "browse.php?sortby=8");
+        assert_eq!(site.top_seeded_page(2), "browse.php?sortby=8&page=2");
         assert_eq!(site.details_page(7, 9), "details.php?id=7&hash_id=9");
     }
 }

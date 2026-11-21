@@ -52,6 +52,8 @@ pub enum View {
     New,
     Marked(Mark),
     All,
+    /// The tracker's most seeded list, in its order, whatever the mark.
+    Top,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -173,7 +175,8 @@ impl Store {
                     t.multiplier, t.uploader, t.sticky, t.stats_at, m.state, t.hash_id, r.stars,
                     t.release
              FROM torrents t LEFT JOIN marks m ON m.torrent_id = t.id
-                             LEFT JOIN ratings r ON r.torrent_id = t.id WHERE 1=1",
+                             LEFT JOIN ratings r ON r.torrent_id = t.id
+                             LEFT JOIN top_seeded p ON p.torrent_id = t.id WHERE 1=1",
         );
         let mut args: Vec<Box<dyn ToSql>> = Vec::new();
         match f.view {
@@ -183,6 +186,7 @@ impl Store {
                 args.push(Box::new(mark.as_str()));
             }
             View::All => {}
+            View::Top => sql.push_str(" AND p.rank IS NOT NULL"),
         }
         if let (Some(from), View::New | View::All) = (f.from, f.view) {
             sql.push_str(" AND t.uploaded_at >= ?");
@@ -205,7 +209,12 @@ impl Store {
         if !f.include_sticky {
             sql.push_str(" AND t.sticky = 0");
         }
-        sql.push_str(&format!(" ORDER BY {} LIMIT ?", f.sort.order_by()));
+        // Most seeded keeps the tracker's order, so it matches the site.
+        let order = match f.view {
+            View::Top => "p.rank",
+            _ => f.sort.order_by(),
+        };
+        sql.push_str(&format!(" ORDER BY {order} LIMIT ?"));
         let limit = if f.limit == 0 {
             MAX_LIMIT
         } else {
@@ -426,6 +435,7 @@ impl View {
         match s {
             "new" => Some(View::New),
             "all" => Some(View::All),
+            "top" => Some(View::Top),
             other => Mark::parse(other).map(View::Marked),
         }
     }

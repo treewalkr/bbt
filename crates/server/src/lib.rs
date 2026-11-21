@@ -7,4 +7,5 @@ pub mod older;
 pub mod queries;
 pub mod store;
 pub mod sync;
+pub mod top;
 pub mod tracker;

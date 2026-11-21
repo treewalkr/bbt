@@ -6,6 +6,7 @@ use crate::older::{self, Cursor};
 use crate::queries::{Filter, Mark, Sort, View};
 use crate::store::Store;
 use crate::sync::{self, HARD_MAX_PAGES, Outcome};
+use crate::top;
 use crate::tracker::{self, Client};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderValue, StatusCode, header};
@@ -58,6 +59,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/prefs", get(get_prefs).put(put_prefs))
         .route("/api/sync", get(sync_status).post(run_sync))
         .route("/api/older", post(load_older))
+        .route("/api/top", post(refresh_top))
         .route("/api/torrents/{id}/details", get(details))
         .route("/api/torrents/{id}/download", get(download))
         .route("/api/torrents/{id}/refresh", post(refresh))
@@ -169,6 +171,10 @@ async fn summary(
         "last_sync": store.last_sync()?,
         "last_visit": store.get("last_visit")?.and_then(|v| v.parse::<i64>().ok()),
         "coverage_from": coverage_from(&store)?,
+        "top": {
+            "count": store.count_top_seeded()?,
+            "fetched_at": store.get(top::FETCHED_KEY)?.and_then(|v| v.parse::<i64>().ok()),
+        },
         "categories": s.config.as_ref().map_or(Vec::new(), |c| {
             c.site
                 .categories
@@ -434,6 +440,45 @@ async fn run_sync(State(s): State<Arc<AppState>>) -> ApiResult<Value> {
             "new_count": r.new_count,
             "stop": r.stop.describe(),
             "complete": r.stop == sync::Stop::ReachedCutoff,
+        }),
+    }))
+}
+
+/// Read the tracker's most seeded list again (a few pages), unless it was read within
+/// the cooldown. Either way the UI then lists `view=top`.
+async fn refresh_top(State(s): State<Arc<AppState>>) -> ApiResult<Value> {
+    let Some(cfg) = s.config.as_ref() else {
+        return Err(ApiError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "tracker access is disabled".into(),
+        ));
+    };
+    let Ok(_guard) = s.sync_lock.try_lock() else {
+        return Err(ApiError(StatusCode::CONFLICT, "a sync is running".into()));
+    };
+    let mut store = Store::open(&s.db_path)?;
+    let mut client = s.client.lock().await;
+    if client.is_none() {
+        *client = Some(config::client(&store, cfg)?);
+    }
+    let client = client.as_mut().expect("client was just set");
+    let now = chrono::Utc::now().timestamp();
+    let mut source = top::Tracker {
+        client: &mut *client,
+        creds: &cfg.creds,
+        site: &cfg.site,
+    };
+    let outcome = top::refresh(&mut store, &mut source, now).await;
+    store.set("cookies", &client.cookie_header())?;
+    Ok(Json(match outcome? {
+        top::Outcome::CoolingDown { seconds_left } => json!({
+            "status": "cooling_down",
+            "seconds_left": seconds_left,
+        }),
+        top::Outcome::Done { pages, count } => json!({
+            "status": "done",
+            "pages": pages,
+            "count": count,
         }),
     }))
 }
@@ -1007,6 +1052,16 @@ mod tests {
         let (app, _dir) = app().await;
         let (st, _) = call(&app, "POST", "/api/older", None).await;
         assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn top_disabled_without_config() {
+        let (app, _dir) = app().await;
+        let (status, _) = call(&app, "POST", "/api/top", None).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        let (status, body) = call(&app, "GET", "/api/torrents?view=top", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["torrents"], json!([]));
     }
 
     #[tokio::test]

@@ -98,6 +98,14 @@ ALTER TABLE torrents ADD COLUMN release TEXT;
 CREATE INDEX torrents_release ON torrents (release);
 ";
 
+/// The tracker's most seeded torrents, in its order (see `top`). Replaced on each read.
+const SCHEMA_V8: &str = "
+CREATE TABLE top_seeded (
+    rank       INTEGER PRIMARY KEY,
+    torrent_id INTEGER NOT NULL REFERENCES torrents(id)
+);
+";
+
 pub struct Store {
     pub(crate) conn: Connection,
 }
@@ -168,6 +176,10 @@ impl Store {
             fill_release_codes(&tx)?;
             tx.pragma_update(None, "user_version", 7)?;
             tx.commit()?;
+        }
+        if version < 8 {
+            conn.execute_batch(SCHEMA_V8)?;
+            conn.pragma_update(None, "user_version", 8)?;
         }
         Ok(Self { conn })
     }
@@ -352,6 +364,27 @@ impl Store {
         Ok(self
             .conn
             .query_row("SELECT MAX(started_at) FROM sync_runs", [], |r| r.get(0))?)
+    }
+
+    /// Store the most seeded list, best first. Every id must already be a torrent.
+    pub fn replace_top_seeded(&mut self, ids: &[u64]) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        tx.execute("DELETE FROM top_seeded", [])?;
+        {
+            let mut insert =
+                tx.prepare("INSERT INTO top_seeded (rank, torrent_id) VALUES (?1, ?2)")?;
+            for (rank, id) in ids.iter().enumerate() {
+                insert.execute(params![rank, id])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn count_top_seeded(&self) -> Result<u64> {
+        Ok(self
+            .conn
+            .query_row("SELECT COUNT(*) FROM top_seeded", [], |r| r.get(0))?)
     }
 
     pub fn get(&self, key: &str) -> Result<Option<String>> {
