@@ -381,10 +381,14 @@ impl Store {
         Ok(())
     }
 
+    /// Non-sticky torrents in the most seeded list, like the other list counts.
     pub fn count_top_seeded(&self) -> Result<u64> {
-        Ok(self
-            .conn
-            .query_row("SELECT COUNT(*) FROM top_seeded", [], |r| r.get(0))?)
+        Ok(self.conn.query_row(
+            "SELECT COUNT(*) FROM top_seeded p JOIN torrents t ON t.id = p.torrent_id
+             WHERE t.sticky = 0",
+            [],
+            |r| r.get(0),
+        )?)
     }
 
     pub fn get(&self, key: &str) -> Result<Option<String>> {
