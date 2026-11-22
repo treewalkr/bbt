@@ -432,12 +432,25 @@ function showRelease(it) {
 function openDrawer(id, {delay = 0, focus = false} = {}) {
   S.drawer = id; $("#drawer").classList.add("open");
   clearTimeout(followT);
-  if (!detailsCache.has(id) && !detailsBusy.has(id)) {
-    if (delay) { followT = setTimeout(() => { if (S.drawer === id) fetchDetails(id); }, delay); }
+  peekDetails(id).then(hit => {
+    if (hit || S.drawer !== id || detailsBusy.has(id)) return;
+    if (delay) { clearTimeout(followT); followT = setTimeout(() => { if (S.drawer === id) fetchDetails(id); }, delay); }
     else fetchDetails(id);
-  }
+  });
   renderDrawer();
   if (focus) $("#drawerIn h4")?.focus();
+}
+// Screenshots the server saved earlier: answered at once and never a tracker request.
+const peekMiss = new Set();
+async function peekDetails(id) {
+  if (detailsCache.has(id)) return true;
+  if (detailsBusy.has(id) || peekMiss.has(id)) return false;
+  try {
+    const d = await api("GET", `/api/torrents/${id}/details?saved=true`);
+    if (!d.images) { peekMiss.add(id); return false; }
+    if (!detailsCache.has(id)) { detailsCache.set(id, d); detailsChanged(id); }
+    return true;
+  } catch { return false; }
 }
 async function fetchDetails(id) {
   detailsBusy.set(id, "load");
@@ -823,7 +836,7 @@ function preload(url) { if (url && !preloaded.has(url)) { preloaded.add(url); ne
 function swPrefetch() {
   if (!SW.open) return;
   const ahead = swPile().slice(0, 1 + swBuffer());
-  for (const it of ahead.slice(1)) swSlides(it).forEach(preload);
+  for (const it of ahead.slice(1)) { swSlides(it).forEach(preload); peekDetails(it.id); }
   const now = detailsCache.get(ahead[0]?.id);
   if (SW.pf || SW.pfStop || !now || now.error) return; // the card on screen goes first, and an error stops it
   const next = ahead.slice(1).find(it => !detailsCache.has(it.id) && !detailsBusy.has(it.id));
@@ -880,7 +893,10 @@ function renderSwipe() {
     $("#swAnnounce").textContent = `${clean(it.title)}. ${fmtSize(it.size_bytes)}. ${pile.length} left.`;
     // Screenshots are a tracker request, so only a card you stay on asks for them.
     clearTimeout(SW.fetchT);
-    if (!detailsCache.has(it.id) && !detailsBusy.has(it.id)) SW.fetchT = setTimeout(() => { if (SW.cur === it.id) fetchDetails(it.id); }, FOLLOW_MS);
+    peekDetails(it.id).then(hit => {
+      if (hit || SW.cur !== it.id || detailsBusy.has(it.id)) return;
+      clearTimeout(SW.fetchT); SW.fetchT = setTimeout(() => { if (SW.cur === it.id) fetchDetails(it.id); }, FOLLOW_MS);
+    });
   } else {
     $("#swCard .sw-info").innerHTML = swInfo(it); // a rating changed
   }
