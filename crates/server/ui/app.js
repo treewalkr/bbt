@@ -73,6 +73,8 @@ markTouch(); matchMedia("(pointer: coarse)").addEventListener("change", () => { 
 const main = $("#main");
 
 /* ===== api ===== */
+// Posters and screenshots come through bbt's saved copies, which the browser keeps.
+const pic = u => `/img?u=${encodeURIComponent(u)}`;
 async function api(method, path, body) {
   let res;
   try { res = await fetch(path, {method, headers: body ? {"content-type":"application/json"} : {}, body: body ? JSON.stringify(body) : undefined}); }
@@ -125,7 +127,7 @@ const clean = t => t.replace(/\s*@[A-Za-z]+\s*$/, ""); // drop the site tag at t
 const code = it => (it.title.match(/^[A-Z0-9]{2,}-\d+/) || [clean(it.title).split(/\s+/).slice(0, 3).join(" ")])[0];
 const grad = it => `linear-gradient(160deg,hsl(${hue(it.category)} 45% 38%),hsl(${(hue(it.category) + 40) % 360} 35% 18%))`;
 function poster(it) {
-  const img = it.poster_url ? `<img src="${esc(it.poster_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
+  const img = it.poster_url ? `<img src="${esc(pic(it.poster_url))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
   return `<div class="poster" style="--g:${grad(it)}"><span>${esc(code(it))}</span>${img}</div>`;
 }
 
@@ -387,7 +389,7 @@ function renderDrawer() {
   const d = detailsCache.get(it.id);
   const shots = !d ? shotsNote(it.id)
     : d.error ? `<p class="err" title="${esc(d.error)}">Couldn't get screenshots${/disabled/.test(d.error) ? " because tracker access is off (check .env)." : /not in the database/.test(d.error) ? " because this torrent is no longer in bbt." : `. ${esc(d.error)}`} <button class="linkbtn" data-act="retry">Try again</button></p>`
-    : d.images.length ? `<div class="shots">${d.images.map((u, i) => `<a href="${esc(u)}" data-shot="${i}" aria-label="View screenshot ${i + 1} of ${d.images.length}"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`).join("")}</div>`
+    : d.images.length ? `<div class="shots">${d.images.map((u, i) => `<a href="${esc(u)}" data-shot="${i}" aria-label="View screenshot ${i + 1} of ${d.images.length}"><img src="${esc(pic(u))}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`).join("")}</div>`
     : `<p class="note">No screenshots on tracker for this torrent.</p>`;
   setHTML($("#drawerIn"), `<header><span>${catsOn() ? esc(CATS[it.category] ?? `Category ${it.category}`) + " " : ""}<span style="color:var(--faint)">#${it.id}</span></span><button class="close" aria-label="Close details" data-act="close"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
   <div class="big">${poster(it)}<div style="display:flex;flex-direction:column;gap:10px"><h4 tabindex="-1">${esc(clean(it.title))}</h4>
@@ -529,12 +531,12 @@ const viewerOpen = () => !$("#lightbox").hidden;
 function showShot() {
   const n = V.images.length, url = V.images[V.i];
   zoomReset(false);
-  $("#lbImg").src = url;
+  $("#lbImg").src = pic(url);
   $("#lbStage").scrollTo(0, 0);
   $("#lbOpen").href = url;
   $("#lbCount").textContent = `${V.i + 1} / ${n}`;
   $(".lb-prev").hidden = $(".lb-next").hidden = n < 2;
-  for (const d of [-1, 1]) new Image().src = V.images[(V.i + d + n) % n]; // preload neighbours
+  for (const d of [-1, 1]) new Image().src = pic(V.images[(V.i + d + n) % n]); // preload neighbours
 }
 // With Blur posters on, screenshots stay blurred until shown on purpose (v or a click).
 const viewerBlurred = () => document.body.classList.contains("blur") && !$("#lightbox").classList.contains("reveal");
@@ -834,7 +836,7 @@ function swInfo(it) {
 function swCardHTML(it, under) {
   const url = under ? swSlides(it)[0] : null;
   return `<article class="sw-card${under ? " under" : ""}" ${under ? 'aria-hidden="true"' : 'id="swCard"'} data-id="${it.id}">
-  <div class="sw-media" style="--g:${grad(it)}"><span class="sw-code">${esc(code(it))}</span>${url ? `<img src="${esc(url)}" alt="" referrerpolicy="no-referrer" draggable="false" onerror="this.remove()">` : ""}</div>
+  <div class="sw-media" style="--g:${grad(it)}"><span class="sw-code">${esc(code(it))}</span>${url ? `<img src="${esc(pic(url))}" alt="" referrerpolicy="no-referrer" draggable="false" onerror="this.remove()">` : ""}</div>
   ${under ? "" : Object.entries(SW_STAMP).map(([k, l]) => `<span class="sw-stamp" data-stamp="${k}" aria-hidden="true">${l}</span>`).join("")}
   <div class="sw-info">${swInfo(it)}</div></article>`;
 }
@@ -842,7 +844,7 @@ function swCardHTML(it, under) {
 // the current card's) and every screenshot (image hosts, not the tracker).
 const swBuffer = () => Math.max(0, Math.min(5, +(localStorage.getItem("bbt_sw_buffer") ?? 2) || 0));
 const preloaded = new Set();
-function preload(url) { if (url && !preloaded.has(url)) { preloaded.add(url); new Image().src = url; } }
+function preload(url) { if (url && !preloaded.has(url)) { preloaded.add(url); new Image().src = pic(url); } }
 function swPrefetch() {
   if (!SW.open) return;
   const ahead = swPile().slice(0, 1 + swBuffer());
@@ -870,7 +872,7 @@ function renderSwMedia() {
     : !d ? `<span class="sw-note">Screenshots load when you stay on this card</span>`
     : !d.images.length ? `<span class="sw-note">No screenshots on the tracker</span>` : "";
   m.classList.toggle("revealed", SW.revealed);
-  setHTML(m, `<span class="sw-code">${esc(code(it))}</span>${url ? `<img src="${esc(url)}" alt="" referrerpolicy="no-referrer" draggable="false" onerror="this.remove()">` : ""}
+  setHTML(m, `<span class="sw-code">${esc(code(it))}</span>${url ? `<img src="${esc(pic(url))}" alt="" referrerpolicy="no-referrer" draggable="false" onerror="this.remove()">` : ""}
   ${slides.length > 1 ? `<div class="sw-bars" aria-hidden="true">${slides.map((_, i) => `<i class="${i === SW.photo ? "on" : ""}"></i>`).join("")}</div>` : ""}${note}
   ${url ? `<button class="sw-zoom" data-sw="zoom" aria-label="View full screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-6 6M4 20l6-6"/></svg></button>` : ""}
   ${url && swBlurred() ? `<button class="sw-reveal" data-sw="reveal">${touch() ? "Show" : `Show (${esc(keyOf("lbReveal"))})`}</button>` : ""}`);
