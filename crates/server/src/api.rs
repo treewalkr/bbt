@@ -2,6 +2,7 @@
 
 use crate::config::{self, Config};
 use crate::hosts;
+use crate::images::ImageCache;
 use crate::older::{self, Cursor};
 use crate::queries::{Filter, Mark, Sort, View};
 use crate::store::Store;
@@ -28,11 +29,28 @@ pub struct AppState {
     config: Option<Config>,
     /// One client for sync, details and downloads, so the request gap applies to all.
     client: Mutex<Option<Client>>,
+    /// Posters and screenshots, saved next to the database.
+    images: Arc<ImageCache>,
 }
 
 impl AppState {
     pub fn new(db_path: &str, config: Option<Config>) -> anyhow::Result<Arc<Self>> {
+        let dir = std::path::Path::new(db_path)
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .join("images");
+        let tracker = config.as_ref().and_then(|c| {
+            reqwest::Url::parse(&c.base_url)
+                .ok()?
+                .host_str()
+                .map(str::to_ascii_lowercase)
+        });
+        let cap_mb = config
+            .as_ref()
+            .map_or(config::DEFAULT_IMAGE_CACHE_MB, |c| c.image_cache_mb);
+        let images = ImageCache::open(dir, tracker, cap_mb << 20)?;
         Ok(Arc::new(Self {
+            images,
             db_path: db_path.into(),
             store: Mutex::new(Store::open(db_path)?),
             sync_lock: Mutex::new(()),
@@ -51,6 +69,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/icon-180.png", get(icon_180))
         .route("/icon-512.png", get(icon_512))
         .route("/manifest.webmanifest", get(manifest))
+        .route("/img", get(image))
         .route("/api/summary", get(summary))
         .route("/api/torrents", get(torrents))
         .route("/api/marks", post(set_marks))
@@ -640,7 +659,40 @@ async fn fetch_details(s: &AppState, id: u64) -> Result<Details, ApiError> {
     }
     let now = chrono::Utc::now().timestamp();
     s.store.lock().await.save_images(id, &details.images, now)?;
+    s.images.warm(details.images.clone()); // ready before they are shown
     Ok(details)
+}
+
+#[derive(Deserialize)]
+struct ImageQuery {
+    u: String,
+}
+
+/// A poster or screenshot from the local copy, read from its host the first time.
+/// The browser keeps it for good. If this machine can't get it, the browser is sent
+/// to the host instead, as before the copies existed.
+async fn image(State(s): State<Arc<AppState>>, Query(q): Query<ImageQuery>) -> Response {
+    if !(q.u.starts_with("https://") || q.u.starts_with("http://")) {
+        return ApiError::bad_request("not a web address").into_response();
+    }
+    match s.images.get(&q.u).await {
+        Some(img) => (
+            [
+                (header::CONTENT_TYPE, img.kind),
+                (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+            ],
+            img.bytes,
+        )
+            .into_response(),
+        None => (
+            StatusCode::TEMPORARY_REDIRECT,
+            [
+                (header::LOCATION, q.u.as_str()),
+                (header::CACHE_CONTROL, "no-store"),
+            ],
+        )
+            .into_response(),
+    }
 }
 
 /// Counts just read from a details page, in the shape the list uses.
@@ -768,6 +820,7 @@ mod tests {
     use bbt_domain::ListedTorrent;
     use chrono::{TimeZone, Utc};
     use http_body_util::BodyExt;
+    use sha2::Digest;
     use tower::ServiceExt;
 
     fn torrent(id: u64, at: i64) -> ListedTorrent {
@@ -1065,6 +1118,39 @@ mod tests {
         assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
         let (st, _) = call(&app, "GET", "/api/torrents/2/download", None).await;
         assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn serves_saved_images_for_the_browser_to_keep() {
+        let (app, dir) = app().await;
+        let url = "https://images.example/p.png";
+        let name: String = sha2::Sha256::digest(url.as_bytes())
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        std::fs::write(dir.path().join("images").join(name), b"\x89PNG\r\n").unwrap();
+        let req = Request::get(format!("/img?u={}", percent_encode(url)))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(resp.headers()[header::CONTENT_TYPE], "image/png");
+        assert!(
+            resp.headers()[header::CACHE_CONTROL]
+                .to_str()
+                .unwrap()
+                .contains("immutable")
+        );
+
+        let (st, _) = call(&app, "GET", "/img?u=file%3A%2F%2F%2Fetc%2Fpasswd", None).await;
+        assert_eq!(st, StatusCode::BAD_REQUEST);
+        // Not something this machine may fetch: the browser is sent to the host itself.
+        let req = Request::get("/img?u=http%3A%2F%2F127.0.0.1%2Fa.png")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(resp.headers()[header::LOCATION], "http://127.0.0.1/a.png");
     }
 
     #[tokio::test]

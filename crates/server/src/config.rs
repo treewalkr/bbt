@@ -10,6 +10,8 @@ use std::time::Duration;
 /// Minimum gap between any two requests to the tracker.
 pub const REQUEST_GAP: Duration = Duration::from_secs(3);
 
+pub const DEFAULT_IMAGE_CACHE_MB: u64 = 2048;
+
 pub struct Config {
     pub db_path: String,
     pub base_url: String,
@@ -17,6 +19,8 @@ pub struct Config {
     pub site: Site,
     /// `TRACKER_DEVICE_ID`, if set. Otherwise the stored or a newly generated id is used.
     pub device_id: Option<String>,
+    /// `BBT_IMAGE_CACHE_MB`: room for saved posters and screenshots (default 2048).
+    pub image_cache_mb: u64,
 }
 
 impl Config {
@@ -30,6 +34,10 @@ impl Config {
             },
             site: site_from_env(),
             device_id: std::env::var("TRACKER_DEVICE_ID").ok(),
+            image_cache_mb: std::env::var("BBT_IMAGE_CACHE_MB")
+                .ok()
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(DEFAULT_IMAGE_CACHE_MB),
         })
     }
 }

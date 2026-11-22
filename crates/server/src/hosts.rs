@@ -91,7 +91,7 @@ async fn read_capped(mut resp: Response) -> Option<Vec<u8>> {
 }
 
 /// Only public web hosts: never this machine, the home network, the tailnet or the tracker.
-async fn allowed(url: &Url, tracker: Option<&str>) -> bool {
+pub(crate) async fn allowed(url: &Url, tracker: Option<&str>) -> bool {
     if !matches!(url.scheme(), "http" | "https") {
         return false;
     }

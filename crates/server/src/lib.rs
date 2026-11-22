@@ -3,6 +3,7 @@
 pub mod api;
 pub mod config;
 pub mod hosts;
+pub mod images;
 pub mod older;
 pub mod queries;
 pub mod store;
