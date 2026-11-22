@@ -84,7 +84,7 @@ pub async fn refresh(store: &mut Store, source: &mut impl PageSource, now: i64) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::queries::{Filter, View};
+    use crate::queries::{Filter, Mark, View};
     use bbt_domain::ListedTorrent;
     use chrono::{TimeZone, Utc};
 
@@ -188,6 +188,17 @@ mod tests {
         assert_eq!(short.fetched, vec![0, 1]); // stops at the empty page
         assert_eq!(later, Outcome::Done { pages: 2, count: 2 });
         assert_eq!(top_ids(&store), [1, 2]);
+    }
+
+    #[tokio::test]
+    async fn marked_torrents_leave_the_list() {
+        let mut store = Store::open_in_memory().unwrap();
+        refresh(&mut store, &mut Fake::new(99), NOW).await.unwrap();
+        store.set_marks(&[2, 5], Some(Mark::Viewed), NOW).unwrap();
+        assert_eq!(top_ids(&store), [1, 3, 4, 6]);
+        assert_eq!(store.count_top_seeded().unwrap(), 4);
+        store.set_marks(&[2], None, NOW).unwrap();
+        assert_eq!(top_ids(&store), [1, 2, 3, 4, 6]);
     }
 
     #[tokio::test]

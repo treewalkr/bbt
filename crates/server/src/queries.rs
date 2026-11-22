@@ -52,7 +52,7 @@ pub enum View {
     New,
     Marked(Mark),
     All,
-    /// The tracker's most seeded list, in its order, whatever the mark.
+    /// The tracker's most seeded list, in its order, without marked torrents.
     Top,
 }
 
@@ -186,7 +186,7 @@ impl Store {
                 args.push(Box::new(mark.as_str()));
             }
             View::All => {}
-            View::Top => sql.push_str(" AND p.rank IS NOT NULL"),
+            View::Top => sql.push_str(" AND p.rank IS NOT NULL AND m.state IS NULL"),
         }
         if let (Some(from), View::New | View::All) = (f.from, f.view) {
             sql.push_str(" AND t.uploaded_at >= ?");

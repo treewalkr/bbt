@@ -385,7 +385,8 @@ impl Store {
     pub fn count_top_seeded(&self) -> Result<u64> {
         Ok(self.conn.query_row(
             "SELECT COUNT(*) FROM top_seeded p JOIN torrents t ON t.id = p.torrent_id
-             WHERE t.sticky = 0",
+                 LEFT JOIN marks m ON m.torrent_id = t.id
+             WHERE t.sticky = 0 AND m.state IS NULL",
             [],
             |r| r.get(0),
         )?)

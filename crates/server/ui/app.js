@@ -132,7 +132,9 @@ function poster(it) {
 // Only New and Everything are filtered by date ("From"); the sorted lists hold everything.
 const dated = () => S.view === "new" || S.view === "all";
 // Lists that keep every torrent whatever its mark, so marks show as tags and rows stay put.
-const mixedView = () => S.view === "all" || S.view === "top";
+const mixedView = () => S.view === "all";
+// Lists of unmarked torrents only: any mark takes a row out.
+const unmarkedView = () => S.view === "new" || S.view === "top";
 function rangeText() {
   if (S.range === "last") return S.lastVisit ? "since your last visit" : "in the last day";
   if (S.range === "custom") return S.from ? `since ${new Date(S.from + "T12:00:00+07:00").toLocaleDateString("en-GB", {day:"numeric", month:"short"})}` : "today";
@@ -264,6 +266,7 @@ function render() {
     if (catsOn() && !S.cats.size) msg = `<h3>No categories selected</h3><p>Tick at least one category on the left to see torrents.</p><button data-act="allcats">Select all categories</button>`;
     else if (S.q || S.free) msg = `<h3>No matches</h3><p>Nothing in ${label}${S.q ? ` matches “${esc(S.q)}”` : ""}${S.free ? `${S.q ? " and is" : " is"} free` : ""}${dated() ? ` ${rangeText()}` : ""}.</p><button data-act="clearfilters">Clear ${S.q && S.free ? "search and Free only" : S.q ? "search" : "Free only"}</button>`;
     else if (S.view === "top") msg = TOP.busy ? `<h3>Reading the tracker…</h3><p>Loading the ${TOP_PAGES} most seeded pages, a few seconds apart.</p>`
+      : S.summary?.top?.fetched_at && !TOP.msg ? `<h3>All caught up</h3><p>Every torrent on the tracker's most seeded pages is marked.</p>`
       : `<h3>Nothing in Most seeded yet</h3><p>${esc(TOP.msg || "Open this list again to read it from the tracker.")}</p><button data-act="top">Read it now</button>`;
     else if (!total) msg = `<h3>No torrents yet</h3><p>Sync to fetch the latest uploads from tracker.</p><button data-act="sync">Sync now</button>`;
     else if (S.view === "new") msg = olderNew()
@@ -682,7 +685,7 @@ function toast(msg, undo = true) {
   $("#toast").classList.add("show"); clearTimeout(toastT);
   toastT = setTimeout(() => $("#toast").classList.remove("show"), touch() ? 8000 : 4500);
 }
-const leaves = mark => !mixedView() && (S.view === "new" ? mark !== null : mark !== S.view);
+const leaves = mark => !mixedView() && (unmarkedView() ? mark !== null : mark !== S.view);
 async function setMark(ids, mark, {advance = false} = {}) {
   ids = ids.filter(id => S.items.some(i => i.id === id));
   if (!ids.length) return;
