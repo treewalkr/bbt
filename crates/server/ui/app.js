@@ -280,13 +280,13 @@ function render() {
     const head = S.grid ? "" : `<div class="colhead"><span></span><span></span><span></span><span class="l">${S.view === "all" && total > flat.length && flat.length < 5000 ? `Title · ${flat.length} uploaded ${rangeText()}, of ${total} in bbt` : flat.length >= 5000 ? "Title · first 5000 shown" : "Title"}</span><span>Size</span><span class="c-stat">${stat()[0]}</span><span class="c-time">${byDay ? "Time" : "Age"}</span></div>`;
     main.classList.toggle("has-colhead", !S.grid);
     main.classList.toggle("mixed", mixedView()); // the lists where states differ
-    main.innerHTML = head + gs.map(g => {
+    setHTML(main, head + gs.map(g => {
       const nNew = g.items.filter(i => !i.mark).length;
       return `<section class="group" data-g="${g.key}"><div class="ghead"><h3>${esc(g.label)}</h3>
       <span class="sub">${plural(g.items.length, "torrent")}${nNew && S.view !== "new" ? `, <b>${nNew} new</b>` : ""}</span>
       <span class="act">${bulkable() && nNew ? bulkButton(g.key, nNew) : ""}</span></div>
       ${S.grid ? `<div class="cards" role="listbox">${g.items.map(cardHTML).join("")}</div>` : `<div role="listbox">${g.items.map(it => rowHTML(it, byDay)).join("")}</div>`}</section>`;
-    }).join("");
+    }).join(""));
   }
   const oldest = S.summary?.coverage_from;
   if (S.view === "all" && S.sort === "new" && S.summary?.counts.total) {
@@ -370,6 +370,16 @@ function shotsNote(id) {
   if (busy === "load") return `<p class="note">Loading screenshots…</p>`;
   return `<p class="note">Screenshots load when you stay on this torrent.</p>`;
 }
+// Rebuilding a panel recreates its images, which then flash and shift the layout while
+// they load again: the ones already showing are put back instead.
+function setHTML(el, html) {
+  const old = new Map([...el.querySelectorAll("img")].map(i => [i.src, i]));
+  el.innerHTML = html;
+  for (const img of el.querySelectorAll("img")) {
+    const o = old.get(img.src);
+    if (o) { img.replaceWith(o); old.delete(img.src); }
+  }
+}
 function renderDrawer() {
   const it = S.items.find(i => i.id === S.drawer);
   if (!it) return closeDrawer();
@@ -379,7 +389,7 @@ function renderDrawer() {
     : d.error ? `<p class="err" title="${esc(d.error)}">Couldn't get screenshots${/disabled/.test(d.error) ? " because tracker access is off (check .env)." : /not in the database/.test(d.error) ? " because this torrent is no longer in bbt." : `. ${esc(d.error)}`} <button class="linkbtn" data-act="retry">Try again</button></p>`
     : d.images.length ? `<div class="shots">${d.images.map((u, i) => `<a href="${esc(u)}" data-shot="${i}" aria-label="View screenshot ${i + 1} of ${d.images.length}"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`).join("")}</div>`
     : `<p class="note">No screenshots on tracker for this torrent.</p>`;
-  $("#drawerIn").innerHTML = `<header><span>${catsOn() ? esc(CATS[it.category] ?? `Category ${it.category}`) + " " : ""}<span style="color:var(--faint)">#${it.id}</span></span><button class="close" aria-label="Close details" data-act="close"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
+  setHTML($("#drawerIn"), `<header><span>${catsOn() ? esc(CATS[it.category] ?? `Category ${it.category}`) + " " : ""}<span style="color:var(--faint)">#${it.id}</span></span><button class="close" aria-label="Close details" data-act="close"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
   <div class="big">${poster(it)}<div style="display:flex;flex-direction:column;gap:10px"><h4 tabindex="-1">${esc(clean(it.title))}</h4>
   <dl><dt>Uploaded</dt><dd>${fmtWhen(it.uploaded_at)}</dd><dt>By</dt><dd>${esc(it.uploader ?? "Anonymous")}</dd><dt>Size</dt><dd>${fmtSize(it.size_bytes)}, ${it.files} file${it.files === 1 ? "" : "s"}</dd></dl></div></div>
   <dl><dt>Seeding</dt><dd>${it.seeders}</dd><dt>Leeching</dt><dd>${it.leechers}</dd><dt>Snatched</dt><dd>${it.snatched}</dd><dt>Free download</dt><dd>${it.free ? esc(it.free) : "No"}</dd><dt>Counts updated</dt><dd>${fmtAgo(it.stats_at)} <button class="linkbtn" data-act="refresh" ${S.refreshing.has(it.id) ? "disabled" : ""}>${S.refreshing.has(it.id) ? "Refreshing…" : "Refresh"}</button></dd></dl>
@@ -389,7 +399,7 @@ function renderDrawer() {
   <div class="rate-row"><div class="rate" role="group" aria-label="Your rating">${[5, 4, 3, 2, 1].map(n => `<button data-rate="${n}" class="${it.rating >= n ? "on" : ""}" aria-pressed="${it.rating === n}" aria-label="${n} star${n === 1 ? "" : "s"}">★</button>`).join("")}</div><span class="note">${it.rating ? `${it.rating} of 5. ${touch() ? "Tap" : "Click"} it again to clear.` : touch() ? "Not rated." : `Not rated. Press ${keyOf("rate")} then 1–5.`}</span></div>
   <div class="states" role="group" aria-label="Sort into">${[["", {label:"New", c:"var(--new)"}], ...Object.entries(MARKS)].map(([k, m]) => `<button data-set="${k}" style="--c:${m.c}" aria-pressed="${(it.mark ?? "") === k}"><kbd>${keyOf(k || "unmark")}</kbd>${m.label}</button>`).join("")}</div>
   <div class="acts"><button class="primary" data-act="download" ${S.downloading.has(it.id) ? "disabled" : ""}>${S.downloading.has(it.id) ? "Downloading…" : "Download .torrent"}</button>${siteUrl(it) ? `<a href="${siteUrl(it)}" target="_blank" rel="noreferrer">Open on the tracker</a>` : ""}</div>
-  <p class="note">Download fetches a fresh link from tracker and marks the torrent Downloaded.</p>`;
+  <p class="note">Download fetches a fresh link from tracker and marks the torrent Downloaded.</p>`);
   if (hadFocus) $("#drawerIn h4").focus();
 }
 function othersHTML(it) {
@@ -860,10 +870,10 @@ function renderSwMedia() {
     : !d ? `<span class="sw-note">Screenshots load when you stay on this card</span>`
     : !d.images.length ? `<span class="sw-note">No screenshots on the tracker</span>` : "";
   m.classList.toggle("revealed", SW.revealed);
-  m.innerHTML = `<span class="sw-code">${esc(code(it))}</span>${url ? `<img src="${esc(url)}" alt="" referrerpolicy="no-referrer" draggable="false" onerror="this.remove()">` : ""}
+  setHTML(m, `<span class="sw-code">${esc(code(it))}</span>${url ? `<img src="${esc(url)}" alt="" referrerpolicy="no-referrer" draggable="false" onerror="this.remove()">` : ""}
   ${slides.length > 1 ? `<div class="sw-bars" aria-hidden="true">${slides.map((_, i) => `<i class="${i === SW.photo ? "on" : ""}"></i>`).join("")}</div>` : ""}${note}
   ${url ? `<button class="sw-zoom" data-sw="zoom" aria-label="View full screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-6 6M4 20l6-6"/></svg></button>` : ""}
-  ${url && swBlurred() ? `<button class="sw-reveal" data-sw="reveal">${touch() ? "Show" : `Show (${esc(keyOf("lbReveal"))})`}</button>` : ""}`;
+  ${url && swBlurred() ? `<button class="sw-reveal" data-sw="reveal">${touch() ? "Show" : `Show (${esc(keyOf("lbReveal"))})`}</button>` : ""}`);
   slides.forEach(preload);
   swPrefetch();
 }
