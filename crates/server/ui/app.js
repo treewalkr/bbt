@@ -449,8 +449,18 @@ function openDrawer(id, {delay = 0, focus = false} = {}) {
     if (delay) { clearTimeout(followT); followT = setTimeout(() => { if (S.drawer === id) fetchDetails(id); }, delay); }
     else fetchDetails(id);
   });
+  prefetchAround(id);
   renderDrawer();
   if (focus) $("#drawerIn h4")?.focus();
+}
+// The torrents either side of the open one: their saved screenshots load in the
+// background, so stepping to them shows pictures at once. Never a tracker read.
+function prefetchAround(id) {
+  const i = flat.findIndex(x => x.id === id);
+  if (i < 0) return;
+  for (const it of [flat[i + 1], flat[i - 1], flat[i + 2]]) {
+    if (it) peekDetails(it.id).then(hit => { if (hit) detailsCache.get(it.id)?.images?.forEach(preload); });
+  }
 }
 // Screenshots the server saved earlier: answered at once and never a tracker request.
 const peekMiss = new Set();
