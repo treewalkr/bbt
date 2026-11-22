@@ -655,11 +655,25 @@ fn counts_json(d: &Details) -> Value {
     })
 }
 
+#[derive(Deserialize)]
+struct DetailsQuery {
+    /// Answer from the cache only: `images` is null when nothing is saved yet.
+    #[serde(default)]
+    saved: bool,
+}
+
 /// Images from the details page, fetched once and then served from the cache.
 /// A fresh fetch also brings the torrent's live counts.
-async fn details(State(s): State<Arc<AppState>>, Path(id): Path<u64>) -> ApiResult<Value> {
+async fn details(
+    State(s): State<Arc<AppState>>,
+    Path(id): Path<u64>,
+    Query(q): Query<DetailsQuery>,
+) -> ApiResult<Value> {
     if let Some(images) = s.store.lock().await.cached_images(id)? {
         return Ok(Json(json!({ "images": images, "cached": true })));
+    }
+    if q.saved {
+        return Ok(Json(json!({ "images": null, "cached": false })));
     }
     let d = fetch_details(&s, id).await?;
     Ok(Json(
@@ -1039,6 +1053,13 @@ mod tests {
         let (st, v) = call(&app, "GET", "/api/torrents/1/details", None).await;
         assert_eq!(st, StatusCode::OK);
         assert_eq!(v, json!({"images": ["https://a/1.jpg"], "cached": true}));
+
+        let (st, v) = call(&app, "GET", "/api/torrents/1/details?saved=true", None).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["images"], json!(["https://a/1.jpg"]));
+        let (st, v) = call(&app, "GET", "/api/torrents/2/details?saved=true", None).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v, json!({"images": null, "cached": false}));
 
         let (st, _) = call(&app, "GET", "/api/torrents/2/details", None).await;
         assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
