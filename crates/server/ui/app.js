@@ -1124,6 +1124,17 @@ async function refreshTop() {
 }
 
 /* ===== sync ===== */
+const SYNC_TICK_MS = 4000;
+// Reload the list without moving what is on screen: torrents arriving above the first
+// visible row push it down, so scroll by the same amount.
+async function loadKeepingPlace() {
+  const top = main.getBoundingClientRect().top;
+  const anchor = [...main.querySelectorAll("[data-id]")].find(r => r.getBoundingClientRect().bottom > top);
+  const id = anchor?.dataset.id, was = anchor?.getBoundingClientRect().top;
+  await load();
+  const now = id && main.querySelector(`[data-id="${id}"]`);
+  if (now) main.scrollTop += now.getBoundingClientRect().top - was;
+}
 async function doSync() {
   if (S.syncing) return;
   if (syncWaitMin() > 0) return toast(`bbt waits 10 minutes between syncs. Try again in ${syncWaitMin()} min.`, false);
@@ -1133,6 +1144,8 @@ async function doSync() {
   text.textContent = "Syncing: reading up to 12 pages, about 40 seconds…";
   const older = $("#older"); if (older) older.outerHTML = olderHTML();
   let msg;
+  // Each page is saved as it is read: show what has arrived while the rest comes in.
+  const tick = setInterval(loadKeepingPlace, SYNC_TICK_MS);
   try {
     const r = await api("POST", "/api/sync");
     msg = r.status === "cooling_down"
@@ -1141,9 +1154,10 @@ async function doSync() {
   } catch (e) {
     msg = `Sync failed. ${e.message}`;
   } finally {
+    clearInterval(tick);
     S.syncing = false; prog.hidden = true; prog.classList.remove("busy"); btn.disabled = false;
   }
-  await load();
+  await loadKeepingPlace();
   text.textContent = msg;
   checkSyncWait();
 }
