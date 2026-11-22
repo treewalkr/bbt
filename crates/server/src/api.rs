@@ -579,7 +579,9 @@ async fn load_older(State(s): State<Arc<AppState>>) -> ApiResult<Value> {
 }
 
 /// Fetch a torrent's details page through the shared client (respects the request gap).
-async fn fetch_details(s: &AppState, id: u64) -> Result<Details, ApiError> {
+/// Read the torrent's details page from the tracker (one request) and save the
+/// live counts it shows. Screenshot links are left unresolved: see `fetch_details`.
+async fn read_details_page(s: &AppState, id: u64) -> Result<Details, ApiError> {
     let Some(cfg) = s.config.as_ref() else {
         return Err(ApiError(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -598,7 +600,7 @@ async fn fetch_details(s: &AppState, id: u64) -> Result<Details, ApiError> {
             })?
             .0
     };
-    let result = {
+    let html = {
         let mut guard = s.client.lock().await;
         if guard.is_none() {
             *guard = Some(config::client(&*s.store.lock().await, cfg)?);
@@ -612,19 +614,32 @@ async fn fetch_details(s: &AppState, id: u64) -> Result<Details, ApiError> {
             .await
             .set("cookies", &client.cookie_header())?;
         result
-    }; // the tracker is free again: the image hosts below are not the tracker
-    let mut details = parse_details_page(&result?);
-    for image in hosts::resolve(&details.screenshot_links, &cfg.base_url).await {
+    }?; // the tracker is free again
+    let details = parse_details_page(&html);
+    if let Some(c) = &details.counts {
+        let now = chrono::Utc::now().timestamp();
+        // the page is fresher than the last list sync
+        s.store.lock().await.save_counts(id, c, now)?;
+    }
+    Ok(details)
+}
+
+/// The details page plus the images behind its screenshot links (image hosts, not the
+/// tracker), saved so the next look is served from the cache.
+async fn fetch_details(s: &AppState, id: u64) -> Result<Details, ApiError> {
+    let mut details = read_details_page(s, id).await?;
+    let base = &s
+        .config
+        .as_ref()
+        .expect("checked by read_details_page")
+        .base_url;
+    for image in hosts::resolve(&details.screenshot_links, base).await {
         if !details.images.contains(&image) {
             details.images.push(image);
         }
     }
     let now = chrono::Utc::now().timestamp();
-    let store = s.store.lock().await;
-    store.save_images(id, &details.images, now)?;
-    if let Some(c) = &details.counts {
-        store.save_counts(id, c, now)?; // the page is fresher than the last list sync
-    }
+    s.store.lock().await.save_images(id, &details.images, now)?;
     Ok(details)
 }
 
@@ -669,10 +684,9 @@ async fn refresh(State(s): State<Arc<AppState>>, Path(id): Path<u64>) -> ApiResu
             "Counts were updated under a minute ago.".into(),
         ));
     }
-    let d = fetch_details(&s, id).await?;
-    Ok(Json(
-        json!({ "images": d.images, "counts": counts_json(&d) }),
-    ))
+    // Only the counts are wanted: the image hosts behind the screenshots are not asked.
+    let d = read_details_page(&s, id).await?;
+    Ok(Json(json!({ "counts": counts_json(&d) })))
 }
 
 /// Fetch a fresh signed link from the details page, then pass the .torrent through.
@@ -680,7 +694,8 @@ async fn download(
     State(s): State<Arc<AppState>>,
     Path(id): Path<u64>,
 ) -> Result<Response, ApiError> {
-    let d = fetch_details(&s, id).await?;
+    // Only the signed link is wanted: the image hosts behind the screenshots are not asked.
+    let d = read_details_page(&s, id).await?;
     let path = d.download_path.ok_or_else(|| {
         ApiError(
             StatusCode::BAD_GATEWAY,
@@ -699,7 +714,7 @@ async fn download(
         .lock()
         .await
         .as_mut()
-        .expect("client created by fetch_details")
+        .expect("client created by read_details_page")
         .fetch_file(&path)
         .await?;
     let disposition = format!(

@@ -461,7 +461,6 @@ async function refreshCounts(id) {
   S.refreshing.add(id); if (S.drawer === id) renderDrawer();
   try {
     const d = await api("POST", `/api/torrents/${id}/refresh`);
-    detailsCache.set(id, {images: d.images});
     if (d.counts) applyCounts(id, d.counts);
     else toast("The tracker page didn't show counts.", false);
   } catch (e) { toast(`Couldn't refresh counts. ${e.message}`, false); }
