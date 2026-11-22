@@ -440,13 +440,26 @@ async fn run_sync(State(s): State<Arc<AppState>>) -> ApiResult<Value> {
     };
     // Separate connection so the UI stays responsive while sync waits between pages.
     let mut store = Store::open(&s.db_path)?;
-    let mut client = s.client.lock().await;
-    if client.is_none() {
-        *client = Some(config::client(&store, cfg)?);
-    }
-    let client = client.as_mut().expect("client was just set");
-    let live = config::sync_now(&mut store, cfg, client, HARD_MAX_PAGES).await?;
-    Ok(Json(match live.outcome {
+    let before = {
+        let mut client = s.client.lock().await;
+        if client.is_none() {
+            *client = Some(config::client(&store, cfg)?);
+        }
+        client.as_ref().expect("client was just set").requests()
+    };
+    let mut source = SharedTracker {
+        client: &s.client,
+        cfg,
+    };
+    let now = chrono::Utc::now().timestamp();
+    let outcome = sync::run(&mut store, &mut source, HARD_MAX_PAGES, now).await;
+    let requests = {
+        let client = s.client.lock().await;
+        let client = client.as_ref().expect("client was just set");
+        store.set("cookies", &client.cookie_header())?;
+        client.requests() - before // includes any details read between pages
+    };
+    Ok(Json(match outcome? {
         Outcome::CoolingDown { seconds_left } => json!({
             "status": "cooling_down",
             "seconds_left": seconds_left,
@@ -454,13 +467,32 @@ async fn run_sync(State(s): State<Arc<AppState>>) -> ApiResult<Value> {
         Outcome::Done(r) => json!({
             "status": "done",
             "pages": r.pages,
-            "requests": live.requests,
+            "requests": requests,
             "seen": r.seen,
             "new_count": r.new_count,
             "stop": r.stop.describe(),
             "complete": r.stop == sync::Stop::ReachedCutoff,
         }),
     }))
+}
+
+/// List pages read through the shared client, locked for one page at a time rather
+/// than for the whole sync: a download or details read waits for a page, not for the
+/// sync. The client's request gap still spaces every tracker request the same.
+struct SharedTracker<'a> {
+    client: &'a Mutex<Option<Client>>,
+    cfg: &'a Config,
+}
+
+impl sync::PageSource for SharedTracker<'_> {
+    async fn fetch_page(&mut self, n: u32) -> tracker::Result<bbt_domain::ListPage> {
+        let mut client = self.client.lock().await;
+        let client = client.as_mut().expect("client created before the sync");
+        let html = client
+            .fetch_html(&self.cfg.site.list_page(n), &self.cfg.creds)
+            .await?;
+        Ok(parse_list_page(&html))
+    }
 }
 
 /// Read the tracker's most seeded list again (a few pages), unless it was read within
